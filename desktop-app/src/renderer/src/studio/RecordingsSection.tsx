@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { recipeErrorsFromRejection } from '../../../shared/policy/recipe'
 import type { CompileResult, Proposal, ProviderId, Recording } from '../../../shared/schemas'
+import { countReviewItems } from '../../../shared/skills/review'
+import { TARGET } from '../../../shared/target'
 import type { RecordingSummary } from '../../../shared/schemas'
 import { Button } from '../components/Button'
 import { Screenshot } from './Screenshot'
@@ -15,10 +18,12 @@ export function RecordingsSection({
   const [selectedId, setSelectedId] = useState<string | null>(focusId)
   const [detail, setDetail] = useState<Recording | null>(null)
   const [providerId, setProviderId] = useState<ProviderId>('fixture')
+  const providerTouched = useRef(false)
   const [compile, setCompile] = useState<CompileResult | null>(null)
   const [skillName, setSkillName] = useState('Resolve support ticket')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recipeErrors, setRecipeErrors] = useState<string[] | null>(null)
 
   const refreshList = useCallback(() => {
     window.ghost.recordings
@@ -31,6 +36,14 @@ export function RecordingsSection({
     refreshList()
     return window.ghost.library.onChanged(refreshList)
   }, [refreshList])
+  useEffect(() => {
+    window.ghost.providers
+      .getDefault()
+      .then((next) => {
+        if (!providerTouched.current) setProviderId(next)
+      })
+      .catch(() => undefined)
+  }, [])
   useEffect(() => {
     if (focusId) setSelectedId(focusId)
   }, [focusId])
@@ -56,10 +69,14 @@ export function RecordingsSection({
       .finally(() => setBusy(false))
   }
 
+  const proposalReviewCount =
+    compile && compile.ok ? countReviewItems(compile.proposal.recipe, compile.proposal.unresolved) : 0
+
   const save = (proposal: Proposal): void => {
     if (!selectedId) return
     setBusy(true)
     setError(null)
+    setRecipeErrors(null)
     window.ghost.skills
       .saveDraft({
         name: skillName,
@@ -69,7 +86,14 @@ export function RecordingsSection({
         unresolved: proposal.unresolved
       })
       .then((skill) => onSkillSaved(skill.id))
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => {
+        const list = recipeErrorsFromRejection(err)
+        if (list) {
+          setRecipeErrors(list)
+        } else {
+          setError(String(err))
+        }
+      })
       .finally(() => setBusy(false))
   }
 
@@ -99,6 +123,13 @@ export function RecordingsSection({
           <p className="alert-error" role="alert">
             {error}
           </p>
+        )}
+        {recipeErrors !== null && (
+          <ul className="alert-error" role="alert" data-semid="skill-recipe-errors">
+            {recipeErrors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
         )}
         {!detail && <p className="muted">Select a recording to inspect its evidence.</p>}
         {detail && (
@@ -158,11 +189,19 @@ export function RecordingsSection({
                   id="provider"
                   data-semid="compile-provider"
                   value={providerId}
-                  onChange={(event) => setProviderId(event.target.value as ProviderId)}
+                  onChange={(event) => {
+                    providerTouched.current = true
+                    setProviderId(event.target.value as ProviderId)
+                  }}
                 >
                   <option value="fixture">Fixture (offline, deterministic)</option>
                   <option value="meta">Meta (requires MODEL_API_KEY)</option>
                 </select>
+                {providerId === 'fixture' && detail.applicationScope !== TARGET.id && (
+                  <p className="muted" data-semid="fixture-site-hint">
+                    Fixture is tuned for Saltbreak; set MODEL_API_KEY for general sites.
+                  </p>
+                )}
                 <Button
                   variant="primary"
                   data-semid="generate-draft"
@@ -204,6 +243,11 @@ export function RecordingsSection({
                       </li>
                     ))}
                   </ol>
+                  {proposalReviewCount > 0 && (
+                    <p className="alert-warn" role="status" data-semid="guided-run-nudge">
+                      Contains {proposalReviewCount} review items — guided runs recommended.
+                    </p>
+                  )}
                   <div className="field">
                     <label htmlFor="skill-name">Skill name</label>
                     <input

@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, WebContents } from 'electron'
 import { EVENTS } from '../ipc/channels'
 
 export type WindowRole = 'target' | 'toolbar' | 'sidecar' | 'studio'
@@ -16,6 +16,17 @@ export function getWindow(role: WindowRole): BrowserWindow | undefined {
   const window = windows.get(role)
   if (window && !window.isDestroyed()) return window
   windows.delete(role)
+  return undefined
+}
+
+/**
+ * Map an IPC sender to its window role. Popups, destroyed windows, and any
+ * other unregistered sender have no role and must be denied privileged IPC.
+ */
+export function roleForWebContents(sender: WebContents): WindowRole | undefined {
+  for (const [role, window] of windows) {
+    if (!window.isDestroyed() && window.webContents === sender) return role
+  }
   return undefined
 }
 

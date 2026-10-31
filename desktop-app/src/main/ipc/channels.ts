@@ -3,6 +3,7 @@ export const CHANNELS = {
   ping: 'ghost:ping',
   echo: 'ghost:echo',
   targetGetInfo: 'target:get-info',
+  targetSetUrl: 'target:set-url',
   recorderGetState: 'recorder:get-state',
   recorderStart: 'recorder:start',
   recorderPause: 'recorder:pause',
@@ -22,6 +23,7 @@ export const CHANNELS = {
   skillsSaveDraft: 'skills:save-draft',
   skillsUpdateDraft: 'skills:update-draft',
   skillsPublish: 'skills:publish',
+  providersDefault: 'providers:default',
   runsStart: 'runs:start',
   runsState: 'runs:state',
   runsPause: 'runs:pause',
@@ -34,7 +36,13 @@ export const CHANNELS = {
   runsShowTarget: 'runs:show-target',
   runsShowInStudio: 'runs:show-in-studio',
   runsList: 'runs:list',
-  runsGet: 'runs:get'
+  runsGet: 'runs:get',
+  suggestList: 'suggest:list',
+  suggestDismiss: 'suggest:dismiss',
+  suggestAccept: 'suggest:accept',
+  scoutStart: 'scout:start',
+  scoutCancel: 'scout:cancel',
+  scoutStatus: 'scout:status'
 } as const
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS]
@@ -45,7 +53,9 @@ export const EVENTS = {
   recordingState: 'ghost:recording-state',
   studioShow: 'ghost:studio-show',
   runProgress: 'ghost:run-progress',
-  libraryChanged: 'ghost:library-changed'
+  libraryChanged: 'ghost:library-changed',
+  teachPrefill: 'ghost:teach-prefill',
+  scoutProgress: 'ghost:scout-progress'
 } as const
 
 export type PushEvent = (typeof EVENTS)[keyof typeof EVENTS]

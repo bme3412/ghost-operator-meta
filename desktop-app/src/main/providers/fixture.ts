@@ -1,4 +1,5 @@
 import type { Proposal, Recording, RecordingEvent, SkillStep } from '../../shared/schemas'
+import { orderedAttemptSelectors } from '../../shared/capture/selectors'
 import { TARGET } from '../../shared/target'
 
 interface StepEvidence {
@@ -30,10 +31,29 @@ function demonstratedIdentity(events: RecordingEvent[]): string | null {
  */
 export function compileFixture(recording: Recording): Proposal {
   const events = recording.events
+  // The site the demonstration ran on; Saltbreak recordings emit exactly the
+  // historical output (applicationId/allowedApplications "saltbreak").
+  const scope = recording.applicationScope
+  const scopeName = scope === TARGET.id ? TARGET.name : scope
   const identity = demonstratedIdentity(events)
   const inputName = identity && /^T-\d+$/.test(identity) ? 'ticketId' : 'recordId'
   const substitute = (template: string): string =>
     identity ? template.split(identity).join(`{{inputs.${inputName}}}`) : template
+
+  /**
+   * Replay chain for a step: the substituted primary plus the event's
+   * substituted fallbacks. Undefined when the event carries no chain, so
+   * recordings without candidates compile exactly as before.
+   */
+  const stepCandidates = (event: RecordingEvent, primary: string): string[] | undefined => {
+    if (!event.selectorCandidates || event.selectorCandidates.length === 0) return undefined
+    const ordered = orderedAttemptSelectors(
+      primary,
+      event.selectorCandidates.map(substitute)
+    )
+    const extras = ordered.slice(1)
+    return extras.length > 0 ? extras : undefined
+  }
 
   const steps: StepEvidence[] = []
   const unresolved: string[] = []
@@ -68,8 +88,8 @@ export function compileFixture(recording: Recording): Proposal {
           {
             id: path === '/' ? 'goto-home' : `goto-${slug(path)}`,
             kind: 'computer_task',
-            applicationId: TARGET.id,
-            goal: `Open ${path} in ${TARGET.name}.`,
+            applicationId: scope,
+            goal: `Open ${path} in ${scopeName}.`,
             why: 'Every run starts from the demonstrated page.',
             expected: 'The page is loaded.',
             bindings: { action: 'goto', value: path },
@@ -89,7 +109,7 @@ export function compileFixture(recording: Recording): Proposal {
             {
               id: 'review-click',
               kind: 'review',
-              applicationId: TARGET.id,
+              applicationId: scope,
               goal: `Reproduce the click on "${event.targetLabel ?? 'the demonstrated element'}".`,
               bindings: {},
               dataRefs: [],
@@ -100,15 +120,18 @@ export function compileFixture(recording: Recording): Proposal {
           return
         }
         const semid = event.semanticId ?? 'element'
+        const clickSelector = substitute(event.selector)
+        const clickCandidates = stepCandidates(event, clickSelector)
         push(
           {
             id: `click-${slug(semid)}`,
             kind: 'computer_task',
-            applicationId: TARGET.id,
+            applicationId: scope,
             goal: `Click ${semid}.`,
             why: 'This click was part of the demonstration.',
             expected: 'The target responds as demonstrated.',
-            bindings: { action: 'click', selector: substitute(event.selector) },
+            ...(clickCandidates ? { selectorCandidates: clickCandidates } : {}),
+            bindings: { action: 'click', selector: clickSelector },
             dataRefs: [],
             checks: []
           },
@@ -146,7 +169,7 @@ export function compileFixture(recording: Recording): Proposal {
             {
               id: 'review-input',
               kind: 'review',
-              applicationId: TARGET.id,
+              applicationId: scope,
               goal: `Reproduce the demonstrated input${event.value ? ` ("${event.value}")` : ''}.`,
               bindings: {},
               dataRefs: [],
@@ -157,13 +180,16 @@ export function compileFixture(recording: Recording): Proposal {
           return
         }
         const semid = event.semanticId ?? 'field'
+        const fillSelector = substitute(event.selector)
+        const fillCandidates = stepCandidates(event, fillSelector)
         push(
           {
             id: `fill-${slug(semid)}`,
             kind: 'computer_task',
-            applicationId: TARGET.id,
+            applicationId: scope,
             goal: `Fill ${semid}.`,
-            bindings: { action: 'fill', selector: substitute(event.selector), value: event.value ?? '' },
+            ...(fillCandidates ? { selectorCandidates: fillCandidates } : {}),
+            bindings: { action: 'fill', selector: fillSelector, value: event.value ?? '' },
             dataRefs: [],
             checks: []
           },
@@ -185,13 +211,16 @@ export function compileFixture(recording: Recording): Proposal {
           unresolved.push('A submit without a stable hook was skipped.')
           return
         }
+        const submitSelector = substitute(event.selector)
+        const submitCandidates = stepCandidates(event, submitSelector)
         push(
           {
             id: `submit-${slug(event.semanticId ?? 'form')}`,
             kind: 'computer_task',
-            applicationId: TARGET.id,
+            applicationId: scope,
             goal: `Submit ${event.semanticId ?? 'the form'}.`,
-            bindings: { action: 'submit', selector: substitute(event.selector) },
+            ...(submitCandidates ? { selectorCandidates: submitCandidates } : {}),
+            bindings: { action: 'submit', selector: submitSelector },
             dataRefs: [],
             checks: []
           },
@@ -231,7 +260,7 @@ export function compileFixture(recording: Recording): Proposal {
       goal: recording.goal,
       inputSchemaRef: 'TargetProcedureInput',
       steps: steps.map((s) => s.step),
-      allowedApplications: [TARGET.id],
+      allowedApplications: [scope],
       allowedTools: []
     },
     unresolved,

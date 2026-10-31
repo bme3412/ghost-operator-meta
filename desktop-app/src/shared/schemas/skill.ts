@@ -27,6 +27,12 @@ export const SkillStep = z.object({
   goal: z.string().optional(),
   why: z.string().optional(),
   expected: z.string().optional(),
+  /**
+   * Ordered fallback selectors after bindings.selector, strongest first;
+   * replay tries them in order until one matches. Optional so older stored
+   * recipes keep parsing.
+   */
+  selectorCandidates: z.array(z.string()).optional(),
   bindings: z.record(z.string(), z.string()).default({}),
   dataRefs: z.array(z.string()).default([]),
   checks: z.array(CheckRef).default([])

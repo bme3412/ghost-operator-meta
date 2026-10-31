@@ -1,4 +1,6 @@
+import { assertRecipeValid } from '../../shared/policy/recipe'
 import { renderInstructions } from '../../shared/skills/format'
+import { TARGET } from '../../shared/target'
 import type {
   SaveDraftRequest,
   Skill,
@@ -7,6 +9,7 @@ import type {
   UpdateDraftRequest
 } from '../../shared/schemas'
 import { loadState, saveState } from '../store'
+import { getTargetInfo } from '../target'
 
 function slugify(name: string): string {
   return (
@@ -22,12 +25,17 @@ export function listSkills(): SkillSummary[] {
   return loadState().skills.map((skill) => {
     const latest = skill.versions[skill.versions.length - 1]
     if (!latest) throw new Error(`Skill ${skill.id} has no versions.`)
+    const runnable =
+      skill.activeVersion !== null
+        ? (skill.versions.find((v) => v.version === skill.activeVersion) ?? latest)
+        : latest
     return {
       id: skill.id,
       name: skill.name,
       activeVersion: skill.activeVersion,
       latestVersion: latest.version,
-      latestStatus: latest.status
+      latestStatus: latest.status,
+      siteId: runnable.recipe.allowedApplications[0] ?? null
     }
   })
 }
@@ -38,6 +46,10 @@ export function getSkill(skillId: string): Skill | null {
 
 /** Save a reviewed proposal as a new draft version (new skill or new version). */
 export function saveDraft(request: SaveDraftRequest, nowMs: number = Date.now()): Skill {
+  // Pin the creating site: drafts always allow exactly the current site.
+  const siteId = getTargetInfo().id
+  const recipe = { ...request.recipe, allowedApplications: [siteId] }
+  assertRecipeValid(recipe, siteId)
   const state = loadState()
   const createdAt = new Date(nowMs).toISOString()
   const existing = request.skillId ? (getSkill(request.skillId) ?? null) : null
@@ -46,8 +58,8 @@ export function saveDraft(request: SaveDraftRequest, nowMs: number = Date.now())
     const version = Math.max(...existing.versions.map((v) => v.version)) + 1
     const record: SkillVersionRecord = {
       version,
-      recipe: { ...request.recipe, id: existing.id, version },
-      instructions: renderInstructions(request.recipe),
+      recipe: { ...recipe, id: existing.id, version },
+      instructions: renderInstructions(recipe),
       status: 'draft',
       recordingIds: request.recordingIds,
       providerId: request.providerId,
@@ -76,8 +88,8 @@ export function saveDraft(request: SaveDraftRequest, nowMs: number = Date.now())
     versions: [
       {
         version: 1,
-        recipe: { ...request.recipe, id, version: 1 },
-        instructions: renderInstructions(request.recipe),
+        recipe: { ...recipe, id, version: 1 },
+        instructions: renderInstructions(recipe),
         status: 'draft',
         recordingIds: request.recordingIds,
         providerId: request.providerId,
@@ -98,6 +110,11 @@ export function updateDraft(request: UpdateDraftRequest): Skill {
   const record = skill.versions.find((v) => v.version === request.version)
   if (!record) throw new Error(`Unknown version ${request.version}.`)
   if (record.status !== 'draft') throw new Error('Published versions are immutable.')
+  if (request.recipe) {
+    // Drafts keep their creating site; the scope check pins that site.
+    const scopeId = record.recipe.allowedApplications[0] ?? TARGET.id
+    assertRecipeValid({ ...request.recipe, id: skill.id, version: request.version }, scopeId)
+  }
   const updated: Skill = {
     ...skill,
     versions: skill.versions.map((v) =>
@@ -124,6 +141,7 @@ export function publishSkill(skillId: string, version: number): Skill {
   const record = skill.versions.find((v) => v.version === version)
   if (!record) throw new Error(`Unknown version ${version}.`)
   if (record.status !== 'draft') throw new Error('Only drafts can be published.')
+  assertRecipeValid(record.recipe, record.recipe.allowedApplications[0] ?? TARGET.id)
   const updated: Skill = {
     ...skill,
     activeVersion: version,

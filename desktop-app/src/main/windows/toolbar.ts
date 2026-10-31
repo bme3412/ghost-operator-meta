@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog } from 'electron'
 import { getRecorder } from '../recorder/service'
+import { applyAppWindowGuards } from './guards'
 import { openStudioForRecording } from './registry'
 import { baseWebPreferences, loadPage } from './shared'
 
@@ -20,6 +21,7 @@ export function createToolbarWindow(position?: { x: number; y: number }): Browse
     show: false
   })
   window.once('ready-to-show', () => window.show())
+  applyAppWindowGuards(window)
   loadPage(window, 'toolbar')
 
   let forceClose = false

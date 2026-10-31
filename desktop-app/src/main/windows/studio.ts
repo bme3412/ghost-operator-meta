@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron'
+import { applyAppWindowGuards } from './guards'
 import { baseWebPreferences, loadPage } from './shared'
 
 export function createStudioWindow(position?: { x: number; y: number }): BrowserWindow {
@@ -15,6 +16,7 @@ export function createStudioWindow(position?: { x: number; y: number }): Browser
     show: false
   })
   window.once('ready-to-show', () => window.show())
+  applyAppWindowGuards(window)
   loadPage(window, 'studio')
   return window
 }

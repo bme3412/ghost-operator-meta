@@ -53,7 +53,11 @@ test('target ticket resolve flow works through the real UI', async () => {
     await target.locator('[data-semid="nav-staff"]').click()
     await target.locator('[data-semid="nav-staff-inbox"]').click()
     await expect(target.locator('[data-semid="inbox-list"]')).toBeVisible()
-    await expect(target.locator('[data-semid^="ticket-row-"]')).toHaveCount(3)
+    // The seed also carries Atlas backfill tickets (T-104+), so assert the
+    // demo tickets this flow needs rather than an exact total row count.
+    for (const id of ['T-101', 'T-102', 'T-103']) {
+      await expect(target.locator(`[data-semid="ticket-row-${id}"]`)).toBeVisible()
+    }
 
     await target.locator('[data-semid="ticket-resolve-T-103"]').click()
     await expect(target.locator('[data-semid="ticket-status-T-103"]')).toContainText('resolved')
@@ -73,6 +77,8 @@ test('teach, publish, and assisted reuse on a new ticket', async () => {
 
     // 1-5. Teach: demonstrate resolving a ticket, with a note.
     await toolbar.getByTestId('toolbar-teach').click()
+    await toolbar.getByTestId('teach-goal').fill('Resolve a support ticket')
+    await toolbar.getByTestId('teach-start').click()
     await expect(toolbar.getByTestId('toolbar-recording')).toBeVisible()
 
     await target.locator('[data-semid="nav-staff"]').click()
@@ -112,6 +118,34 @@ test('teach, publish, and assisted reuse on a new ticket', async () => {
     await studio.locator('[data-semid="studio-section-runs"]').click()
     await studio.getByRole('option').first().click()
     await expect(studio.locator('[data-semid="run-verification"]')).toContainText('text_contains')
+
+    // 13. Discover: the teach flow mined a ticket-resolve follow-up.
+    await studio.locator('[data-semid="studio-section-map"]').click()
+    const suggestions = studio.locator('[data-semid="suggestions-list"]')
+    await expect(suggestions).toBeVisible()
+    await expect(suggestions.locator('li')).not.toHaveCount(0)
+    await expect(suggestions).toContainText('Parameterize T-101')
+    await expect(suggestions).toContainText('Record T-101 appears in')
+
+    // 14. Discover: scan the site from Studio; the inbox and its ticket
+    // form show up in the map (heuristic mining only — no live LLM).
+    await studio.getByTestId('map-mode-site').click()
+    await studio.getByTestId('site-rescan').click()
+    const siteMap = studio.locator('[data-semid="site-map"]')
+    await expect(siteMap).toBeVisible({ timeout: 120_000 })
+    await expect(siteMap).toContainText('/staff/inbox')
+    await expect(suggestions).toContainText('Automate submission on /staff/inbox', {
+      timeout: 30_000
+    })
+
+    // 15. Discover: accepting a suggestion prefills the Teach goal.
+    await suggestions
+      .locator('li', { hasText: 'Parameterize T-101' })
+      .getByRole('button', { name: 'Teach this' })
+      .click()
+    await expect(toolbar.getByTestId('teach-goal')).toHaveValue(
+      'Parameterize T-101 into a reusable skill'
+    )
   } finally {
     await app.close()
   }

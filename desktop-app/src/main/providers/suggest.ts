@@ -1,0 +1,190 @@
+import { z } from 'zod'
+import type { PageSummary, SiteMap, Suggestion } from '../../shared/schemas'
+import type { MetaEnv } from './meta'
+
+const DEFAULT_BASE_URL = 'https://api.meta.ai/v1'
+const DEFAULT_MODEL = 'muse-spark-1.3'
+
+/** Heuristic suggestions forwarded to the model. */
+export const SUGGEST_POLISH_MAX_SUGGESTIONS = 10
+/** Scanned pages forwarded to the model. */
+export const SUGGEST_POLISH_MAX_PAGES = 12
+/** Per-page field caps so one huge page cannot crowd out the rest. */
+export const SUGGEST_POLISH_MAX_HEADINGS = 8
+export const SUGGEST_POLISH_MAX_LINKS = 10
+export const SUGGEST_POLISH_MAX_FORMS = 4
+export const SUGGEST_POLISH_MAX_FIELDS = 8
+export const SUGGEST_POLISH_MAX_TITLE_CHARS = 160
+export const SUGGEST_POLISH_MAX_WHY_CHARS = 500
+/** Polished workflows kept from a model response. */
+export const SUGGEST_POLISH_MAX_RESULTS = 10
+
+/**
+ * Site-agnostic system prompt for suggestion polish. It carries no
+ * assumptions about which site was scanned: the site id, heuristic
+ * suggestions, and page summaries arrive in the user message and are the
+ * only allowed grounding. Anything uncertain becomes low confidence.
+ */
+export const META_SUGGEST_PROMPT = `You polish heuristic workflow suggestions for an arbitrary website into a ranked work list.
+Output JSON only, matching this shape:
+{"workflows": [{"title": string, "why": string, "evidencePages": string[], "confidence": one of high|medium|low}]}
+Rules: merge suggestions that describe the same work into one entry; rank the rest by how automatable they are (concrete repeated flows first, vague reviews last).
+Keep titles short, actionable verb phrases naming the outcome.
+Only reference site ids, pages, and selectors that appear in the provided input; never invent pages, selectors, quantities, or identifiers.
+Prefer marking an entry low confidence over guessing: when the evidence is thin, a page was never scanned, or the flow is unclear, keep the entry but set confidence to low and say what is missing in "why".`
+
+export const SuggestedWorkflow = z.object({
+  title: z.string().min(1),
+  why: z.string().min(1),
+  evidencePages: z.array(z.string()).default([]),
+  confidence: z.enum(['high', 'medium', 'low'])
+})
+export type SuggestedWorkflow = z.infer<typeof SuggestedWorkflow>
+
+export const SuggestedWorkflows = z.array(SuggestedWorkflow)
+export type SuggestedWorkflows = z.infer<typeof SuggestedWorkflows>
+
+/** Model envelope: chat JSON mode always yields an object, never a bare array. */
+const SuggestedWorkflowsResponse = z.object({
+  workflows: SuggestedWorkflows.default([])
+})
+
+/** One scanned page, slimmed to the fields the polish prompt consumes. */
+export interface SuggestPolishPage {
+  path: string
+  title: string
+  headings: string[]
+  links: string[]
+  forms: Array<{ fields: string[] }>
+  buttons: number
+}
+
+export interface SuggestPolishSuggestion {
+  title: string
+  why: string
+  evidencePages: string[]
+}
+
+export interface SuggestPolishInput {
+  siteId: string
+  suggestions: SuggestPolishSuggestion[]
+  pages: SuggestPolishPage[]
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text
+}
+
+function summarizePage(page: PageSummary): SuggestPolishPage {
+  return {
+    path: page.path,
+    title: truncate(page.title, SUGGEST_POLISH_MAX_TITLE_CHARS),
+    headings: page.headings
+      .slice(0, SUGGEST_POLISH_MAX_HEADINGS)
+      .map((heading) => truncate(heading, SUGGEST_POLISH_MAX_TITLE_CHARS)),
+    links: page.links.slice(0, SUGGEST_POLISH_MAX_LINKS).map((link) => link.href),
+    forms: page.forms
+      .slice(0, SUGGEST_POLISH_MAX_FORMS)
+      .map((form) => ({
+        fields: form.fields
+          .slice(0, SUGGEST_POLISH_MAX_FIELDS)
+          .map((field) => `${field.name} (${field.type})`)
+      })),
+    buttons: page.buttons.length
+  }
+}
+
+/**
+ * Pure input assembly: heuristic suggestions plus page summaries for one
+ * site, each capped so the prompt stays bounded. Never throws on hostile
+ * shapes — callers pass schema-parsed store rows.
+ */
+export function assembleSuggestInput(
+  siteId: string,
+  suggestions: Suggestion[],
+  sitemap: SiteMap | null
+): SuggestPolishInput {
+  return {
+    siteId,
+    suggestions: suggestions
+      .slice(0, SUGGEST_POLISH_MAX_SUGGESTIONS)
+      .map((suggestion) => ({
+        title: truncate(suggestion.title, SUGGEST_POLISH_MAX_TITLE_CHARS),
+        why: truncate(suggestion.why, SUGGEST_POLISH_MAX_WHY_CHARS),
+        evidencePages: [...suggestion.evidence.pages]
+      })),
+    pages: (sitemap?.pages ?? []).slice(0, SUGGEST_POLISH_MAX_PAGES).map(summarizePage)
+  }
+}
+
+/** Render the assembled input as the chat user message. Pure. */
+export function buildSuggestUserMessage(input: SuggestPolishInput): string {
+  return [
+    `Site id: ${input.siteId} (only reference this site id)`,
+    'Heuristic suggestions:',
+    ...input.suggestions.map(
+      (suggestion, index) =>
+        `${index + 1}. ${suggestion.title} — ${suggestion.why} ` +
+        `[pages: ${suggestion.evidencePages.join(', ') || 'none'}]`
+    ),
+    'Scanned pages (path, title, structure):',
+    ...input.pages.map((page) => JSON.stringify(page))
+  ].join('\n')
+}
+
+/**
+ * Meta provider adapter for suggestion polish. Uses the same
+ * OpenAI-compatible chat endpoint, timeout, and error semantics as
+ * generateMetaProposal; validates every response against the local
+ * SuggestedWorkflows schema. Throws on transport or validation failures —
+ * callers fall back to the heuristic list.
+ */
+export async function generateSuggestedWorkflows(
+  input: SuggestPolishInput,
+  env: MetaEnv = process.env
+): Promise<SuggestedWorkflows> {
+  const apiKey = env.MODEL_API_KEY
+  if (!apiKey) {
+    throw new Error('MODEL_API_KEY is not set; cannot polish suggestions with the Meta provider.')
+  }
+  const baseUrl = (env.META_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '')
+  const model = env.SPARK_MODEL ?? DEFAULT_MODEL
+
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: META_SUGGEST_PROMPT },
+          { role: 'user', content: buildSuggestUserMessage(input) }
+        ]
+      }),
+      signal: AbortSignal.timeout(90_000)
+    })
+  } catch (error) {
+    throw new Error(`Meta suggestion request failed: ${(error as Error).message}`)
+  }
+  if (!response.ok) {
+    throw new Error(`Meta suggestion endpoint returned HTTP ${response.status}.`)
+  }
+  const body = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const content = body.choices?.[0]?.message?.content
+  if (!content) {
+    throw new Error('Meta suggestion endpoint returned no message content.')
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    throw new Error('Meta suggestion endpoint returned content that is not JSON.')
+  }
+  return SuggestedWorkflowsResponse.parse(parsed)
+    .workflows.slice(0, SUGGEST_POLISH_MAX_RESULTS)
+}

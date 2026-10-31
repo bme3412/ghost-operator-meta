@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import { Recording } from './recording'
 import { RunRecord } from './run'
+import { SiteMap } from './scout'
 import { Skill } from './skills'
+import { Suggestion } from './suggest'
 
 export const STATE_SCHEMA_VERSION = 5 as const
 
@@ -15,12 +17,29 @@ const LegacyState = z.object({
   recordings: z.array(Recording).default([])
 })
 
+/**
+ * The site the target window currently points at. Absent when the user never
+ * switched sites, in which case readers fall back to the Saltbreak profile
+ * at the configured target URL.
+ */
+export const SiteProfile = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().min(1)
+})
+export type SiteProfile = z.infer<typeof SiteProfile>
+
 /** Authoritative persisted state. Versioned; migrate on load when this grows. */
 export const PersistedState = z.object({
   schemaVersion: z.literal(STATE_SCHEMA_VERSION),
   recordings: z.array(Recording).default([]),
   skills: z.array(Skill).default([]),
-  runs: z.array(RunRecord).default([])
+  runs: z.array(RunRecord).default([]),
+  currentSite: SiteProfile.optional(),
+  /** Recording-mined suggestions. Optional so v5 states without them keep parsing. */
+  suggestions: z.array(Suggestion).optional(),
+  /** Per-site page graphs from scout scans, one entry per site id. Optional; no version bump. */
+  siteMaps: z.array(SiteMap).optional()
 })
 export type PersistedState = z.infer<typeof PersistedState>
 

@@ -1,10 +1,14 @@
 import { app, BrowserWindow, screen } from 'electron'
+import { loadLocalEnv } from './env'
 import { registerIpcHandlers } from './ipc'
 import { registerWindow } from './windows/registry'
 import { createSidecarWindow } from './windows/sidecar'
 import { createStudioWindow } from './windows/studio'
 import { createTargetWindow } from './windows/target'
 import { createToolbarWindow } from './windows/toolbar'
+
+/** Local .env.local first so providers/target see it; real env always wins. */
+loadLocalEnv()
 
 /** Initial layout: target left, toolbar top-center, studio centered, sidecar docked. */
 function createAllWindows(): void {

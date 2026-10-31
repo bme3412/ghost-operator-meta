@@ -1,16 +1,31 @@
 import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { RecorderStatePush } from '../../../shared/schemas'
+import type { RecorderLastEvent, RecorderStatePush } from '../../../shared/schemas'
 import { Button } from '../components/Button'
 import '../styles.css'
 
-const DEFAULT_GOAL = 'Resolve a support ticket'
+const HEIGHT_IDLE = 64
+const HEIGHT_IDLE_FOOTER = 104
+const HEIGHT_TEACH = 400
+const HEIGHT_ACTIVE = 216
+const HEIGHT_ACTIVE_NOTE = 380
+
+const NUDGE_TYPES: ReadonlySet<string> = new Set(['input_commit', 'select'])
 
 function formatElapsed(ms: number): string {
   const total = Math.floor(ms / 1000)
   const minutes = Math.floor(total / 60)
   const seconds = total % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function eventKey(event: RecorderLastEvent): string {
+  return `${event.atMs}:${event.type}:${event.label}`
+}
+
+interface FeedEntry {
+  key: string
+  label: string
 }
 
 function ToolbarApp(): React.JSX.Element {
@@ -21,12 +36,31 @@ function ToolbarApp(): React.JSX.Element {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [targetName, setTargetName] = useState('target')
+  const [targetUrl, setTargetUrl] = useState('')
+  const [teachOpen, setTeachOpen] = useState(false)
+  const [goal, setGoal] = useState('')
+  const [caseInput, setCaseInput] = useState('')
+  const [goalHint, setGoalHint] = useState<string | null>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [urlError, setUrlError] = useState<string | null>(null)
+  const [urlBusy, setUrlBusy] = useState(false)
+  const [feed, setFeed] = useState<FeedEntry[]>([])
+  const [summary, setSummary] = useState<string | null>(null)
+  const [hasRecordings, setHasRecordings] = useState<boolean | null>(null)
+  const [nudgeDismissedKey, setNudgeDismissedKey] = useState<string | null>(null)
   const receivedAt = useRef(Date.now())
+  const recordingIdRef = useRef<string | null>(null)
+  const activeRef = useRef(false)
+  const targetUrlRef = useRef('')
 
   useEffect(() => {
     window.ghost.target
       .getInfo()
-      .then((info) => setTargetName(info.name))
+      .then((info) => {
+        setTargetName(info.name)
+        setTargetUrl(info.url)
+        setUrlInput(info.url)
+      })
       .catch(() => undefined)
   }, [])
 
@@ -51,10 +85,83 @@ function ToolbarApp(): React.JSX.Element {
     return () => window.clearInterval(timer)
   }, [push?.status])
 
+  // First-run empty state: learn whether any recording exists yet.
+  useEffect(() => {
+    let cancelled = false
+    const refresh = (): void => {
+      window.ghost.recordings
+        .list()
+        .then((list) => {
+          if (!cancelled) setHasRecordings(list.length > 0)
+        })
+        .catch(() => {
+          if (!cancelled) setHasRecordings(null)
+        })
+    }
+    refresh()
+    const off = window.ghost.library.onChanged(refresh)
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [])
+
   const status = push?.status ?? 'idle'
   const recording = status === 'recording'
   const paused = status === 'paused'
   const active = recording || paused
+  const lastEvent = push?.lastEvent
+  const eventCount = push?.eventCount ?? 0
+
+  // New recording sessions reset the local feed, nudge, and finish summary.
+  useEffect(() => {
+    const id = push?.recordingId ?? null
+    if (id !== recordingIdRef.current) {
+      recordingIdRef.current = id
+      setFeed([])
+      setNudgeDismissedKey(null)
+      setConfirmCancel(false)
+      if (id !== null) setSummary(null)
+    }
+  }, [push?.recordingId])
+
+  // Accumulate the live capture feed from lastEvent pushes (no extra IPC).
+  useEffect(() => {
+    if (!lastEvent) return
+    const key = eventKey(lastEvent)
+    const label = lastEvent.label
+    setFeed((prev) =>
+      prev.some((entry) => entry.key === key)
+        ? prev
+        : [...prev.slice(-2), { key, label }]
+    )
+  }, [lastEvent])
+
+  // Resize the toolbar window only when its visible mode changes.
+  const showFooter = !active && !teachOpen && (summary !== null || hasRecordings === false)
+  const mode = teachOpen
+    ? 'teach'
+    : noteOpen && active
+      ? 'note'
+      : active
+        ? 'active'
+        : showFooter
+          ? 'footer'
+          : 'idle'
+  useEffect(() => {
+    const height =
+      mode === 'teach'
+        ? HEIGHT_TEACH
+        : mode === 'note'
+          ? HEIGHT_ACTIVE_NOTE
+          : mode === 'active'
+            ? HEIGHT_ACTIVE
+            : mode === 'footer'
+              ? HEIGHT_IDLE_FOOTER
+              : HEIGHT_IDLE
+    void window.ghost.toolbar.setHeight(height)
+  }, [mode])
+
   const elapsed =
     push === null
       ? 0
@@ -67,14 +174,63 @@ function ToolbarApp(): React.JSX.Element {
     action().catch((err: unknown) => setError(String(err)))
   }
 
+  const openTeach = (): void => {
+    setGoal('')
+    setCaseInput('')
+    setGoalHint(null)
+    setUrlInput(targetUrl)
+    setUrlError(null)
+    setTeachOpen(true)
+  }
+  const closeTeach = (): void => {
+    setTeachOpen(false)
+    setGoalHint(null)
+  }
+  // Site switching is idle-only: the Teach form unmounts while recording.
+  const applyUrl = (): void => {
+    const trimmed = urlInput.trim()
+    if (!trimmed) {
+      setUrlError('Enter a target URL — e.g. https://example.com.')
+      return
+    }
+    if (!/^https?:\/\//i.test(trimmed)) {
+      setUrlError('URL must start with http:// or https://.')
+      return
+    }
+    setUrlBusy(true)
+    setUrlError(null)
+    window.ghost.target
+      .setUrl(trimmed)
+      .then((info) => {
+        setTargetName(info.name)
+        setTargetUrl(info.url)
+        setUrlInput(info.url)
+      })
+      .catch((err: unknown) => {
+        setUrlError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => setUrlBusy(false))
+  }
+  const startTeaching = (): void => {
+    const trimmedGoal = goal.trim()
+    if (!trimmedGoal) {
+      setGoalHint('Describe the goal — e.g. Refund order SB-1002.')
+      return
+    }
+    const trimmedCase = caseInput.trim()
+    run(() =>
+      window.ghost.recorder.start(trimmedGoal, trimmedCase === '' ? null : trimmedCase).then(() => {
+        closeTeach()
+      })
+    )
+  }
+
   const openNote = (): void => {
     setNoteText('')
     setNoteOpen(true)
-    void window.ghost.toolbar.setHeight(220)
   }
   const closeNote = (): void => {
     setNoteOpen(false)
-    void window.ghost.toolbar.setHeight(64)
   }
   const saveNote = (): void => {
     run(() =>
@@ -83,6 +239,45 @@ function ToolbarApp(): React.JSX.Element {
       })
     )
   }
+
+  const finishRecording = (): void => {
+    run(() =>
+      window.ghost.recorder.finish().then((recording) => {
+        const count = recording.events.length
+        setSummary(`Captured ${count} action${count === 1 ? '' : 's'} — review in Studio`)
+      })
+    )
+  }
+
+  const cancelRecording = (): void => {
+    setConfirmCancel(false)
+    setSummary(null)
+    run(() => window.ghost.recorder.cancel())
+  }
+
+  const lastKey = lastEvent ? eventKey(lastEvent) : null
+  const showNudge =
+    recording &&
+    !noteOpen &&
+    lastEvent !== undefined &&
+    NUDGE_TYPES.has(lastEvent.type) &&
+    lastKey !== nudgeDismissedKey
+
+  // Suggestion accept in Studio pushes a Teach prefill here. Idle-only: a
+  // prefill arriving mid-recording is ignored, never clobbers the session.
+  activeRef.current = active
+  targetUrlRef.current = targetUrl
+  useEffect(() => {
+    return window.ghost.toolbar.onTeachPrefill(({ goal: preset }) => {
+      if (activeRef.current) return
+      setGoal(preset)
+      setCaseInput('')
+      setGoalHint(null)
+      setUrlInput(targetUrlRef.current)
+      setUrlError(null)
+      setTeachOpen(true)
+    })
+  }, [])
 
   return (
     <main className="toolbar-root">
@@ -106,12 +301,12 @@ function ToolbarApp(): React.JSX.Element {
             {formatElapsed(elapsed)}
           </span>
         )}
-        {!active && (
+        {!active && !teachOpen && (
           <Button
             variant="primary"
             data-testid="toolbar-teach"
             data-semid="teach"
-            onClick={() => run(() => window.ghost.recorder.start(DEFAULT_GOAL, null))}
+            onClick={openTeach}
           >
             Teach
           </Button>
@@ -137,7 +332,7 @@ function ToolbarApp(): React.JSX.Element {
           </Button>
         )}
         {active && (
-          <Button data-testid="toolbar-finish" data-semid="finish" onClick={() => run(() => window.ghost.recorder.finish())}>
+          <Button data-testid="toolbar-finish" data-semid="finish" onClick={finishRecording}>
             Finish
           </Button>
         )}
@@ -149,13 +344,7 @@ function ToolbarApp(): React.JSX.Element {
         {active && confirmCancel && (
           <span className="confirm-inline" role="alert">
             Discard?
-            <Button
-              data-testid="toolbar-cancel-yes"
-              onClick={() => {
-                setConfirmCancel(false)
-                run(() => window.ghost.recorder.cancel())
-              }}
-            >
+            <Button data-testid="toolbar-cancel-yes" onClick={cancelRecording}>
               Yes
             </Button>
             <Button data-testid="toolbar-cancel-no" onClick={() => setConfirmCancel(false)}>
@@ -164,6 +353,135 @@ function ToolbarApp(): React.JSX.Element {
           </span>
         )}
       </div>
+      {teachOpen && !active && (
+        <form
+          className="teach-form"
+          data-testid="teach-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            startTeaching()
+          }}
+        >
+          <div className="teach-field">
+            <label htmlFor="teach-goal">What should Ghost learn?</label>
+            <input
+              id="teach-goal"
+              className="teach-input"
+              data-testid="teach-goal"
+              type="text"
+              autoFocus
+              value={goal}
+              onChange={(event) => {
+                setGoal(event.target.value)
+                if (goalHint !== null) setGoalHint(null)
+              }}
+              placeholder="e.g. Refund order SB-1002"
+            />
+            {goalHint !== null && (
+              <p className="teach-hint" role="alert" data-testid="teach-goal-hint">
+                {goalHint}
+              </p>
+            )}
+          </div>
+          <div className="teach-field">
+            <label htmlFor="teach-case">Case or context (optional)</label>
+            <input
+              id="teach-case"
+              className="teach-input"
+              data-testid="teach-case"
+              type="text"
+              value={caseInput}
+              onChange={(event) => setCaseInput(event.target.value)}
+              placeholder="e.g. SB-1002"
+            />
+          </div>
+          <div className="teach-field">
+            <label htmlFor="teach-url">Target site URL</label>
+            <div className="teach-url-row">
+              <input
+                id="teach-url"
+                className="teach-input"
+                data-testid="teach-url"
+                type="text"
+                value={urlInput}
+                onChange={(event) => {
+                  setUrlInput(event.target.value)
+                  if (urlError !== null) setUrlError(null)
+                }}
+                placeholder="https://example.com"
+                spellCheck={false}
+              />
+              <Button
+                data-testid="teach-url-apply"
+                type="button"
+                disabled={urlBusy}
+                onClick={applyUrl}
+              >
+                Apply
+              </Button>
+            </div>
+            {urlError !== null && (
+              <p className="teach-hint" role="alert" data-testid="teach-url-error">
+                {urlError}
+              </p>
+            )}
+          </div>
+          <p className="teach-target" data-testid="teach-target">
+            Demonstrating on: {targetName}
+          </p>
+          <div className="teach-actions">
+            <Button variant="primary" data-testid="teach-start" data-semid="teach-start" type="submit">
+              Start demonstrating
+            </Button>
+            <Button data-testid="teach-cancel" type="button" onClick={closeTeach}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+      {active && (
+        <div className="toolbar-sub">
+          <p className="toolbar-hint" data-testid="toolbar-hint">
+            Demonstrate the task, then Finish
+          </p>
+          <span className="toolbar-count" data-testid="toolbar-count">
+            {eventCount} action{eventCount === 1 ? '' : 's'} captured
+          </span>
+          {feed.length > 0 && (
+            <ul className="toolbar-feed" data-testid="toolbar-feed" aria-label="Recent captures">
+              {feed.map((entry) => (
+                <li key={entry.key} data-testid="toolbar-feed-item">
+                  {entry.label}
+                </li>
+              ))}
+            </ul>
+          )}
+          {showNudge && (
+            <div className="note-nudge" data-testid="note-nudge" role="status">
+              <span>Value may vary per case — Add note?</span>
+              <Button data-testid="note-nudge-add" onClick={openNote}>
+                Add note
+              </Button>
+              <Button
+                data-testid="note-nudge-dismiss"
+                onClick={() => setNudgeDismissedKey(lastKey)}
+              >
+                Dismiss
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+      {!active && !teachOpen && summary !== null && (
+        <p className="toolbar-summary" data-testid="toolbar-summary" role="status">
+          {summary}
+        </p>
+      )}
+      {!active && !teachOpen && summary === null && hasRecordings === false && (
+        <p className="toolbar-empty" data-testid="toolbar-empty-hint">
+          Demonstrate a task on the target site, review it in Studio, then reuse it as a skill.
+        </p>
+      )}
       {noteOpen && (
         <div className="note-editor" data-testid="note-editor">
           <label htmlFor="note-text">Explain a decision or variable</label>

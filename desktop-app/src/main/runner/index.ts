@@ -16,6 +16,7 @@ import {
   selectorForStep,
   type DomAct
 } from './operations'
+import { waitForStepChecks } from './wait'
 
 export interface RunnerDeps {
   now: () => number
@@ -29,6 +30,10 @@ export interface RunnerDeps {
   persistRun: (record: RunRecord) => void
   onProgress: (progress: RunProgress | null) => void
   highlight: (selector: string | null) => void
+  /** Overrideable sleep for check waits; defaults to a setTimeout sleep. */
+  sleep?: (ms: number) => Promise<void>
+  /** Override the bounded check-wait budget; defaults live in ./wait. */
+  checkWait?: { timeoutMs?: number; pollMs?: number }
 }
 
 interface ActiveRun {
@@ -134,6 +139,14 @@ export function createRunner(deps: RunnerDeps): {
   }
 
   async function evaluateStepChecks(run: ActiveRun, step: SkillStep): Promise<CheckResult[]> {
+    // Wait-for-condition replaces blind settling: give the page a bounded
+    // window to render the check targets after the step's action, then
+    // evaluate honestly whether or not they appeared.
+    await waitForStepChecks(step.checks, run.record.inputs, deps.domQuery, {
+      timeoutMs: deps.checkWait?.timeoutMs,
+      pollMs: deps.checkWait?.pollMs,
+      sleep: deps.sleep
+    })
     const nowMs = deps.now()
     const results: CheckResult[] = []
     for (const ref of step.checks) {

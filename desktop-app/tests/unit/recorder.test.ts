@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createRecorder } from '../../src/main/recorder/index'
-import type { Recording, RecorderStatePush } from '../../src/shared/schemas'
+import { RecorderStatePush } from '../../src/shared/schemas'
+import type { Recording, RecorderStatePush as RecorderStatePushType } from '../../src/shared/schemas'
 
 function harness() {
   let now = 1_000_000
-  const pushes: RecorderStatePush[] = []
+  const pushes: RecorderStatePushType[] = []
   const persisted: Recording[] = []
   const captures: Array<{ recordingId: string; sequence: number }> = []
   const recorder = createRecorder({
@@ -140,5 +141,133 @@ describe('recorder state machine', () => {
     recorder.start('Goal', null)
     recorder.setContext('case-002')
     expect(recorder.getPush().caseId).toBe('case-002')
+  })
+})
+
+describe('recorder lastEvent tracking', () => {
+  it('omits lastEvent while idle and on start', () => {
+    const { recorder } = harness()
+    expect(recorder.getPush().lastEvent).toBeUndefined()
+    const push = recorder.start('Goal', null)
+    expect(push.lastEvent).toBeUndefined()
+  })
+
+  it('summarizes appended events in the push', async () => {
+    const { recorder, pushes } = harness()
+    recorder.start('Goal', null)
+    await recorder.appendEvents([
+      { type: 'click', targetLabel: 'Resolve', semanticId: 'ticket-resolve', atMs: 1_000_001 }
+    ])
+    expect(recorder.getPush().lastEvent).toEqual({
+      type: 'click',
+      label: 'Clicked Resolve',
+      atMs: 1_000_001
+    })
+    expect(pushes[pushes.length - 1]?.lastEvent?.label).toBe('Clicked Resolve')
+  })
+
+  it('tracks the last event of a batch', async () => {
+    const { recorder } = harness()
+    recorder.start('Goal', null)
+    await recorder.appendEvents([
+      { type: 'navigate', value: '/staff/inbox', atMs: 1_000_001 },
+      { type: 'input_commit', targetLabel: 'Quantity', atMs: 1_000_002 }
+    ])
+    expect(recorder.getPush().lastEvent).toEqual({
+      type: 'input_commit',
+      label: 'Filled Quantity',
+      atMs: 1_000_002
+    })
+  })
+
+  it('summarizes selects and navigations', async () => {
+    const { recorder } = harness()
+    recorder.start('Goal', null)
+    await recorder.appendEvents([{ type: 'select', semanticId: 'refund-reason', atMs: 1_000_001 }])
+    expect(recorder.getPush().lastEvent?.label).toBe('Selected refund-reason')
+    await recorder.appendEvents([{ type: 'navigate', value: '/staff/inbox', atMs: 1_000_002 }])
+    expect(recorder.getPush().lastEvent).toEqual({
+      type: 'navigate',
+      label: 'Opened /staff/inbox',
+      atMs: 1_000_002
+    })
+  })
+
+  it('summarizes notes', () => {
+    const { recorder, advance } = harness()
+    recorder.start('Goal', null)
+    advance(5_000)
+    recorder.addNote('Qty comes from the case request.')
+    expect(recorder.getPush().lastEvent).toEqual({
+      type: 'note',
+      label: 'Note Qty comes from the case request.',
+      atMs: 1_005_000
+    })
+  })
+
+  it('keeps the last append/note summary across pause and resume', async () => {
+    const { recorder } = harness()
+    recorder.start('Goal', null)
+    await recorder.appendEvents([{ type: 'click', targetLabel: 'Resolve', atMs: 1_000_001 }])
+    const paused = recorder.pause()
+    expect(paused.lastEvent?.label).toBe('Clicked Resolve')
+    const resumed = await recorder.resume()
+    expect(resumed.lastEvent?.label).toBe('Clicked Resolve')
+  })
+
+  it('clears lastEvent on finish and cancel', async () => {
+    const { recorder } = harness()
+    recorder.start('Goal', null)
+    await recorder.appendEvents([{ type: 'click', atMs: 1_000_001 }])
+    await recorder.finish()
+    expect(recorder.getPush().lastEvent).toBeUndefined()
+    recorder.start('Goal', null)
+    await recorder.appendEvents([{ type: 'click', atMs: 1_000_002 }])
+    recorder.cancel()
+    expect(recorder.getPush().lastEvent).toBeUndefined()
+  })
+})
+
+describe('recorder push schema compat', () => {
+  it('parses legacy pushes that omit lastEvent', () => {
+    const legacy = {
+      status: 'recording',
+      recordingId: 'rec-1',
+      goal: 'Goal',
+      caseId: null,
+      startedAt: new Date(1_000_000).toISOString(),
+      eventCount: 2,
+      elapsedMs: 500
+    }
+    expect(RecorderStatePush.parse(legacy).lastEvent).toBeUndefined()
+  })
+
+  it('parses new pushes carrying lastEvent', () => {
+    const next = {
+      status: 'recording',
+      recordingId: 'rec-1',
+      goal: 'Goal',
+      caseId: null,
+      startedAt: new Date(1_000_000).toISOString(),
+      eventCount: 2,
+      elapsedMs: 500,
+      lastEvent: { type: 'click', label: 'Clicked Resolve', atMs: 1_000_001 }
+    }
+    expect(RecorderStatePush.parse(next).lastEvent?.label).toBe('Clicked Resolve')
+  })
+
+  it('lets legacy-shaped readers strip the new field', () => {
+    const legacyShape = RecorderStatePush.omit({ lastEvent: true })
+    const parsed = legacyShape.parse({
+      status: 'recording',
+      recordingId: 'rec-1',
+      goal: 'Goal',
+      caseId: null,
+      startedAt: new Date(1_000_000).toISOString(),
+      eventCount: 2,
+      elapsedMs: 500,
+      lastEvent: { type: 'click', label: 'Clicked Resolve', atMs: 1_000_001 }
+    })
+    expect('lastEvent' in parsed).toBe(false)
   })
 })

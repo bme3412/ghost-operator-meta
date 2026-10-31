@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getActiveVersion, getSkill, listSkills, publishSkill, saveDraft, updateDraft } from '../../src/main/skills/index'
-import { resetStoreCache } from '../../src/main/store/index'
+import { loadState, resetStoreCache, saveState } from '../../src/main/store/index'
 import type { SkillRecipe } from '../../src/shared/schemas'
 
 function recipe(): SkillRecipe {
@@ -19,7 +19,11 @@ function recipe(): SkillRecipe {
         kind: 'computer_task',
         applicationId: 'saltbreak',
         goal: 'Open the case.',
-        bindings: { caseId: 'inputs.caseId' },
+        bindings: {
+          action: 'click',
+          selector: '[data-semid="case-open"]',
+          caseId: 'inputs.caseId'
+        },
         dataRefs: [],
         checks: []
       }
@@ -108,5 +112,107 @@ describe('skills store', () => {
     expect(published.versions[0]?.status).toBe('published')
     expect(getActiveVersion(skill.id)?.version).toBe(1)
     expect(() => publishSkill(skill.id, 1)).toThrow()
+  })
+
+  it('rejects new drafts with unknown actions, checks, or tools', () => {
+    const badAction = recipe()
+    badAction.steps[0] = {
+      ...badAction.steps[0]!,
+      bindings: { action: 'teleport', selector: '[data-semid="x"]' }
+    }
+    expect(() =>
+      saveDraft({
+        name: 'Bad action',
+        recipe: badAction,
+        recordingIds: [],
+        providerId: 'fixture',
+        unresolved: []
+      })
+    ).toThrow(/bindings\.action/)
+
+    const badCheck = recipe()
+    badCheck.steps[0] = { ...badCheck.steps[0]!, checks: [{ name: 'vibes_ok' }] }
+    expect(() =>
+      saveDraft({
+        name: 'Bad check',
+        recipe: badCheck,
+        recordingIds: [],
+        providerId: 'fixture',
+        unresolved: []
+      })
+    ).toThrow(/unknown check/)
+
+    const badTool = recipe()
+    badTool.steps[0] = { ...badTool.steps[0]!, kind: 'tool', toolId: 'mystery-tool' }
+    expect(() =>
+      saveDraft({
+        name: 'Bad tool',
+        recipe: badTool,
+        recordingIds: [],
+        providerId: 'fixture',
+        unresolved: []
+      })
+    ).toThrow(/unregistered tool/)
+
+    expect(listSkills()).toHaveLength(0)
+  })
+
+  it('rejects appended versions with invalid recipes', () => {
+    const first = saveDraft({
+      name: 'Resolve support ticket',
+      recipe: recipe(),
+      recordingIds: [],
+      providerId: 'fixture',
+      unresolved: []
+    })
+    const bad = recipe()
+    bad.steps[0] = { ...bad.steps[0]!, checks: [{ name: 'vibes_ok' }] }
+    expect(() =>
+      saveDraft({
+        skillId: first.id,
+        name: 'Resolve support ticket',
+        recipe: bad,
+        recordingIds: [],
+        providerId: 'fixture',
+        unresolved: []
+      })
+    ).toThrow(/Recipe is invalid/)
+    expect(getSkill(first.id)?.versions).toHaveLength(1)
+  })
+
+  it('rejects draft edits that break the recipe', () => {
+    const skill = saveDraft({
+      name: 'Resolve support ticket',
+      recipe: recipe(),
+      recordingIds: [],
+      providerId: 'fixture',
+      unresolved: []
+    })
+    const bad = recipe()
+    bad.steps[0] = { ...bad.steps[0]!, bindings: { action: 'click' } }
+    expect(() => updateDraft({ skillId: skill.id, version: 1, recipe: bad })).toThrow(
+      /bindings\.selector/
+    )
+    expect(getSkill(skill.id)?.versions[0]?.recipe.steps[0]?.bindings['selector']).toBe(
+      '[data-semid="case-open"]'
+    )
+  })
+
+  it('rejects publishing a draft that became invalid', () => {
+    const skill = saveDraft({
+      name: 'Resolve support ticket',
+      recipe: recipe(),
+      recordingIds: [],
+      providerId: 'fixture',
+      unresolved: []
+    })
+    const state = loadState()
+    const stored = state.skills.find((s) => s.id === skill.id)
+    expect(stored?.versions[0]).toBeDefined()
+    stored!.versions[0]!.recipe.steps[0]!.checks = [{ name: 'vibes_ok' }]
+    saveState({ ...state })
+    expect(() => publishSkill(skill.id, 1)).toThrow(/unknown check/)
+    expect(getSkill(skill.id)?.activeVersion).toBeNull()
+    expect(getSkill(skill.id)?.versions[0]?.status).toBe('draft')
   })
 })

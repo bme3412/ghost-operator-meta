@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateCheck, resolvePlaceholders } from '../../src/main/runner/checks'
+import {
+  evaluateCheck,
+  resolvePlaceholders,
+  type DomQuery
+} from '../../src/main/runner/checks'
 import { createRunner, type Runner } from '../../src/main/runner/index'
+import {
+  clickSnippet,
+  fillSnippet,
+  submitSnippet,
+  textSnippet,
+  valueSnippet,
+  visibleSnippet
+} from '../../src/main/runner/snippets'
+import {
+  selectorsForChecks,
+  startPageLoadWait,
+  waitForPageLoad,
+  waitForStepChecks,
+  type LoadEventSource
+} from '../../src/main/runner/wait'
 import type { RunProgress, RunRecord, SkillRecipe } from '../../src/shared/schemas'
 
 const NOW = Date.parse('2026-10-31T12:00:00.000Z')
@@ -52,7 +71,13 @@ function recipe(): SkillRecipe {
 }
 
 /** In-memory pseudo-DOM with just enough behavior for the ticket flow. */
-function harness() {
+function harness(overrides?: {
+  text?: (
+    selector: string,
+    base: (selector: string) => Promise<string | null>
+  ) => Promise<string | null>
+  checkWait?: { timeoutMs?: number; pollMs?: number }
+}) {
   const texts: Record<string, string> = {
     '[data-semid="ticket-status-T-101"]': 'open',
     '[data-semid="ticket-status-T-102"]': 'pending'
@@ -68,6 +93,9 @@ function harness() {
   const persisted: RunRecord[] = []
   const pushes: Array<RunProgress | null> = []
   const highlights: Array<string | null> = []
+  const sleepCalls: number[] = []
+  const baseText = async (selector: string): Promise<string | null> =>
+    texts[selector] ?? null
   const runner = createRunner({
     now: () => NOW,
     tick: () => Promise.resolve(),
@@ -77,7 +105,7 @@ function harness() {
         : null,
     domQuery: {
       visible: async (selector) => present.has(selector),
-      text: async (selector) => texts[selector] ?? null,
+      text: overrides?.text ? (selector) => overrides.text!(selector, baseText) : baseText,
       value: async () => null
     },
     domAct: {
@@ -106,13 +134,18 @@ function harness() {
     },
     highlight: (selector) => {
       highlights.push(selector)
-    }
+    },
+    sleep: async (ms) => {
+      sleepCalls.push(ms)
+    },
+    ...(overrides?.checkWait ? { checkWait: overrides.checkWait } : {})
   })
   return {
     runner,
     persisted,
     pushes,
     highlights,
+    sleepCalls,
     texts,
     currentPath: () => path
   }
@@ -267,5 +300,284 @@ describe('check validators', () => {
     await expect(evaluateCheck({ name: 'nope' }, ctx({}))).rejects.toThrow('Unknown check')
     const malformed = await evaluateCheck({ name: 'text_contains' }, ctx({}))
     expect(malformed.passed).toBe(false)
+  })
+})
+
+describe('page snippets', () => {
+  it('visible snippet probes real visibility, not presence', () => {
+    const code = visibleSnippet('[data-semid="ticket-status-T-102"]')
+    for (const marker of [
+      'querySelector',
+      'isConnected',
+      'getBoundingClientRect',
+      'getComputedStyle',
+      'display',
+      'visibility',
+      'opacity'
+    ]) {
+      expect(code).toContain(marker)
+    }
+    expect(code).toContain('return true')
+    expect(code).toContain('return false')
+  })
+
+  it('query snippets cap text and type-check values', () => {
+    expect(textSnippet('[data-semid="a"]')).toContain('textContent')
+    expect(textSnippet('[data-semid="a"]')).toContain('5000')
+    expect(valueSnippet('[data-semid="a"]')).toContain('typeof v')
+  })
+
+  it('action snippets keep their behavior markers', () => {
+    const click = clickSnippet('[data-semid="a"]')
+    expect(click).toContain('scrollIntoView')
+    expect(click).toContain('.click()')
+    expect(click).toContain('missing')
+
+    const fill = fillSnippet('[data-semid="a"]', 'hello')
+    expect(fill).toContain("dispatchEvent(new Event('input'")
+    expect(fill).toContain("dispatchEvent(new Event('change'")
+    expect(fill).toContain('getOwnPropertyDescriptor')
+
+    const submit = submitSnippet('[data-semid="a"]')
+    expect(submit).toContain("closest('form')")
+    expect(submit).toContain('requestSubmit')
+  })
+
+  it('escapes selectors and values so quotes cannot break snippets', () => {
+    const evil = '[data-x="a\\"b\\\\c"]'
+    const code = fillSnippet(evil, 'v"x')
+    expect(code).toContain(JSON.stringify(evil))
+    expect(code).toContain(JSON.stringify('v"x'))
+    expect(clickSnippet(evil)).toContain(JSON.stringify(evil))
+  })
+})
+
+describe('check waits', () => {
+  function manualClock() {
+    let nowMs = 1000
+    const sleeps: number[] = []
+    return {
+      now: () => nowMs,
+      sleep: async (ms: number) => {
+        sleeps.push(ms)
+        nowMs += ms
+      },
+      sleeps
+    }
+  }
+
+  function stubDom(impl: Partial<DomQuery>): DomQuery {
+    return {
+      visible: async () => false,
+      text: async () => null,
+      value: async () => null,
+      ...impl
+    }
+  }
+
+  it('selectorsForChecks resolves placeholders and skips unresolvable entries', () => {
+    expect(
+      selectorsForChecks(
+        [
+          { name: 'text_contains', selector: '[data-semid="t-{{inputs.ticketId}}"]' },
+          { name: 'target_visible' },
+          { name: 'text_contains', selector: '[data-semid="t-{{inputs.missing}}"]' }
+        ],
+        INPUTS
+      )
+    ).toEqual(['[data-semid="t-T-102"]'])
+  })
+
+  it('returns immediately when checks are ready and when there are none', async () => {
+    const clock = manualClock()
+    const dom = stubDom({ text: async () => 'resolved' })
+    const ready = await waitForStepChecks(
+      [{ name: 'text_contains', selector: '[data-semid="a"]' }],
+      INPUTS,
+      dom,
+      { timeoutMs: 5000, pollMs: 100, sleep: clock.sleep, now: clock.now }
+    )
+    expect(ready).toBe(true)
+    expect(clock.sleeps).toHaveLength(0)
+
+    const empty = await waitForStepChecks([], INPUTS, dom, {
+      timeoutMs: 5000,
+      pollMs: 100,
+      sleep: clock.sleep,
+      now: clock.now
+    })
+    expect(empty).toBe(true)
+    expect(clock.sleeps).toHaveLength(0)
+  })
+
+  it('polls until check targets appear', async () => {
+    const clock = manualClock()
+    let calls = 0
+    const dom = stubDom({
+      text: async () => (++calls < 3 ? null : 'resolved')
+    })
+    const ready = await waitForStepChecks(
+      [{ name: 'text_contains', selector: '[data-semid="a"]' }],
+      INPUTS,
+      dom,
+      { timeoutMs: 5000, pollMs: 100, sleep: clock.sleep, now: clock.now }
+    )
+    expect(ready).toBe(true)
+    expect(calls).toBe(3)
+    expect(clock.sleeps).toEqual([100, 100])
+  })
+
+  it('gives up after a bounded timeout', async () => {
+    const clock = manualClock()
+    const dom = stubDom({})
+    const ready = await waitForStepChecks(
+      [{ name: 'text_contains', selector: '[data-semid="never"]' }],
+      INPUTS,
+      dom,
+      { timeoutMs: 250, pollMs: 100, sleep: clock.sleep, now: clock.now }
+    )
+    expect(ready).toBe(false)
+    const total = clock.sleeps.reduce((a, b) => a + b, 0)
+    expect(total).toBeGreaterThanOrEqual(250)
+    expect(total).toBeLessThan(500)
+  })
+
+  it('waits on visibility for target_visible checks', async () => {
+    const clock = manualClock()
+    let calls = 0
+    const dom = stubDom({ visible: async () => ++calls >= 2 })
+    const ready = await waitForStepChecks(
+      [{ name: 'target_visible', selector: '[data-semid="a"]' }],
+      INPUTS,
+      dom,
+      { timeoutMs: 5000, pollMs: 50, sleep: clock.sleep, now: clock.now }
+    )
+    expect(ready).toBe(true)
+    expect(calls).toBe(2)
+    expect(clock.sleeps).toEqual([50])
+  })
+
+  it('treats value_equals as ready when either value or text answers', async () => {
+    const clock = manualClock()
+    const byValue = await waitForStepChecks(
+      [{ name: 'value_equals', selector: '[data-semid="a"]' }],
+      INPUTS,
+      stubDom({ value: async () => 'x' }),
+      { timeoutMs: 100, pollMs: 10, sleep: clock.sleep, now: clock.now }
+    )
+    expect(byValue).toBe(true)
+    const byText = await waitForStepChecks(
+      [{ name: 'value_equals', selector: '[data-semid="a"]' }],
+      INPUTS,
+      stubDom({ text: async () => 'x' }),
+      { timeoutMs: 100, pollMs: 10, sleep: clock.sleep, now: clock.now }
+    )
+    expect(byText).toBe(true)
+  })
+
+  it('succeeds an assisted run when a late check target appears during the wait', async () => {
+    let calls = 0
+    const { runner, sleepCalls } = harness({
+      text: async (selector, base) => {
+        if (selector === '[data-semid="ticket-status-T-102"]' && ++calls < 3) return null
+        return base(selector)
+      },
+      checkWait: { timeoutMs: 2000, pollMs: 1 }
+    })
+    runner.startRun({ skillId: 'resolve-support-ticket', mode: 'assisted', inputs: INPUTS })
+    const done = await settle(runner)
+    expect(done.status).toBe('succeeded')
+    expect(calls).toBeGreaterThanOrEqual(3)
+    expect(sleepCalls.length).toBeGreaterThan(0)
+  })
+
+  it('fails honestly when a check target never appears', async () => {
+    const { runner } = harness({
+      text: async (selector, base) =>
+        selector === '[data-semid="ticket-status-T-102"]' ? null : base(selector),
+      checkWait: { timeoutMs: 30, pollMs: 1 }
+    })
+    runner.startRun({ skillId: 'resolve-support-ticket', mode: 'assisted', inputs: INPUTS })
+    const done = await settle(runner)
+    expect(done.status).toBe('failed')
+    expect(done.error).toContain('text_contains')
+  })
+})
+
+describe('page load waits', () => {
+  function fakeLoadSource() {
+    const listeners = new Map<string, Set<(...args: unknown[]) => void>>()
+    const source: LoadEventSource = {
+      on: (event, listener) => {
+        const set = listeners.get(event) ?? new Set()
+        set.add(listener)
+        listeners.set(event, set)
+      },
+      removeListener: (event, listener) => {
+        listeners.get(event)?.delete(listener)
+      }
+    }
+    return {
+      source,
+      emit: (event: 'did-finish-load' | 'did-fail-load', ...args: unknown[]) => {
+        for (const listener of [...(listeners.get(event) ?? [])]) {
+          ;(listener as (...callArgs: unknown[]) => void)(...args)
+        }
+      },
+      count: (event: 'did-finish-load' | 'did-fail-load') => listeners.get(event)?.size ?? 0
+    }
+  }
+
+  it('resolves on did-finish-load and detaches listeners', async () => {
+    const fake = fakeLoadSource()
+    const pending = waitForPageLoad(fake.source, { timeoutMs: 1000 })
+    expect(fake.count('did-finish-load')).toBe(1)
+    fake.emit('did-finish-load')
+    await expect(pending).resolves.toBeUndefined()
+    expect(fake.count('did-finish-load')).toBe(0)
+    expect(fake.count('did-fail-load')).toBe(0)
+  })
+
+  it('rejects on main-frame did-fail-load', async () => {
+    const fake = fakeLoadSource()
+    const pending = waitForPageLoad(fake.source, { timeoutMs: 1000 })
+    fake.emit('did-fail-load', {}, -105, 'Name not resolved', 'https://nope/', true)
+    await expect(pending).rejects.toThrow('Navigation failed')
+    expect(fake.count('did-finish-load')).toBe(0)
+  })
+
+  it('ignores subframe failures and aborted loads while waiting', async () => {
+    const fake = fakeLoadSource()
+    const pending = waitForPageLoad(fake.source, { timeoutMs: 1000 })
+    fake.emit('did-fail-load', {}, -3, 'Aborted', 'https://x/', false)
+    fake.emit('did-fail-load', {}, -3, 'Aborted', 'https://x/', true)
+    fake.emit('did-finish-load')
+    await expect(pending).resolves.toBeUndefined()
+  })
+
+  it('rejects on timeout', async () => {
+    const fake = fakeLoadSource()
+    await expect(waitForPageLoad(fake.source, { timeoutMs: 5 })).rejects.toThrow('timed out')
+    expect(fake.count('did-finish-load')).toBe(0)
+    expect(fake.count('did-fail-load')).toBe(0)
+  })
+
+  it('cancel detaches without settling', async () => {
+    const fake = fakeLoadSource()
+    const wait = startPageLoadWait(fake.source, { timeoutMs: 1000 })
+    let settled = false
+    void wait.promise.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      }
+    )
+    wait.cancel()
+    fake.emit('did-finish-load')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(settled).toBe(false)
+    expect(fake.count('did-finish-load')).toBe(0)
   })
 })

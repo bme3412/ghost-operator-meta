@@ -1,4 +1,5 @@
 import type { SkillStep } from '../../shared/schemas'
+import { formatAttemptAction, orderedAttemptSelectors } from '../../shared/capture/selectors'
 import { resolvePlaceholders } from './checks'
 
 /** Actions the runner can perform in the target page. Each throws on failure. */
@@ -42,6 +43,50 @@ export function selectorForStep(step: SkillStep, inputs: Record<string, string>)
 }
 
 /**
+ * Ordered replay selectors for a step: the primary binding first, then the
+ * declared fallback chain. Candidates naming a missing run input cannot be
+ * attempted and are skipped; the primary still throws as before.
+ */
+export function attemptSelectorsForStep(
+  step: SkillStep,
+  inputs: Record<string, string>
+): string[] {
+  const primary = step.bindings['selector']
+    ? resolvePlaceholders(step.bindings['selector'], inputs)
+    : undefined
+  const fallbacks: string[] = []
+  for (const raw of step.selectorCandidates ?? []) {
+    try {
+      fallbacks.push(resolvePlaceholders(raw, inputs))
+    } catch {
+      // Unresolvable candidate; it cannot be attempted.
+    }
+  }
+  return orderedAttemptSelectors(primary, fallbacks)
+}
+
+/** Try each selector in order until one acts without throwing. */
+async function attemptInOrder(
+  stepId: string,
+  selectors: string[],
+  invoke: (selector: string) => Promise<void>
+): Promise<{ matched: string; index: number }> {
+  let lastError: unknown = null
+  for (let i = 0; i < selectors.length; i++) {
+    const selector = selectors[i] as string
+    try {
+      await invoke(selector)
+      return { matched: selector, index: i }
+    } catch (error) {
+      lastError = error
+    }
+  }
+  if (selectors.length <= 1) throw lastError as Error
+  const detail = lastError instanceof Error ? lastError.message : String(lastError)
+  throw new Error(`Step "${stepId}" matched none of ${selectors.length} selector(s): ${detail}`)
+}
+
+/**
  * Execute an assisted computer_task step in the target page through real DOM
  * interactions. Unknown actions fail the run instead of guessing.
  */
@@ -52,34 +97,42 @@ export async function executeComputerTask(
 ): Promise<OperationOutcome> {
   const resolved = resolveBindings(step, inputs)
   const action = resolved['action']
-  const highlight = resolved['selector'] ?? null
   switch (action) {
     case 'click': {
       if (!resolved['selector']) throw new Error(`Step "${step.id}" has no selector.`)
-      await deps.act.click(resolved['selector'])
+      const selectors = attemptSelectorsForStep(step, inputs)
+      const { matched, index } = await attemptInOrder(step.id, selectors, (s) =>
+        deps.act.click(s)
+      )
       return {
-        actions: [`clicked ${resolved['selector']}`],
-        observed: step.goal ?? `Clicked ${resolved['selector']}.`,
-        highlight
+        actions: [formatAttemptAction('clicked', matched, index, selectors.length)],
+        observed: step.goal ?? `Clicked ${matched}.`,
+        highlight: matched
       }
     }
     case 'fill': {
       if (!resolved['selector']) throw new Error(`Step "${step.id}" has no selector.`)
       if (resolved['value'] === undefined) throw new Error(`Step "${step.id}" has no value.`)
-      await deps.act.fill(resolved['selector'], resolved['value'])
+      const selectors = attemptSelectorsForStep(step, inputs)
+      const { matched, index } = await attemptInOrder(step.id, selectors, (s) =>
+        deps.act.fill(s, resolved['value'] as string)
+      )
       return {
-        actions: [`filled ${resolved['selector']}`],
-        observed: step.goal ?? `Filled ${resolved['selector']}.`,
-        highlight
+        actions: [formatAttemptAction('filled', matched, index, selectors.length)],
+        observed: step.goal ?? `Filled ${matched}.`,
+        highlight: matched
       }
     }
     case 'submit': {
       if (!resolved['selector']) throw new Error(`Step "${step.id}" has no selector.`)
-      await deps.act.submit(resolved['selector'])
+      const selectors = attemptSelectorsForStep(step, inputs)
+      const { matched, index } = await attemptInOrder(step.id, selectors, (s) =>
+        deps.act.submit(s)
+      )
       return {
-        actions: [`submitted ${resolved['selector']}`],
-        observed: step.goal ?? `Submitted ${resolved['selector']}.`,
-        highlight
+        actions: [formatAttemptAction('submitted', matched, index, selectors.length)],
+        observed: step.goal ?? `Submitted ${matched}.`,
+        highlight: matched
       }
     }
     case 'goto': {

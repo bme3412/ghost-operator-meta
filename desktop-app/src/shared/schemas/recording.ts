@@ -30,6 +30,18 @@ export const RecordingEvent = z.object({
   semanticId: z.string().optional(),
   /** CSS selector for replay, when the target offers a stable hook. */
   selector: z.string().optional(),
+  /**
+   * Ordered replay chain, strongest first; `selector` equals the best entry
+   * (`selectorCandidates[0]`) whenever present. Optional so older stored
+   * recordings keep parsing.
+   */
+  selectorCandidates: z.array(z.string()).optional(),
+  /**
+   * Accessible fallback descriptor (explicit role / aria-label). Not a CSS
+   * selector; matched separately from the chain.
+   */
+  accessibleRole: z.string().optional(),
+  accessibleLabel: z.string().optional(),
   surroundingText: z.string().optional(),
   value: z.string().optional(),
   recordIdentity: z.string().optional(),

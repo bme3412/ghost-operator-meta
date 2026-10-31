@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type {
   ProviderId,
@@ -7,6 +7,8 @@ import type {
   Skill,
   SkillSummary
 } from '../../../shared/schemas'
+import { isUnfamiliarSiteId } from '../../../shared/capture/sites'
+import { TARGET } from '../../../shared/target'
 import { Button } from '../components/Button'
 import '../styles.css'
 
@@ -35,6 +37,9 @@ function StartPanel({ onStarted }: { onStarted: () => void }): React.JSX.Element
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Current target site. undefined while loading; a failed lookup leaves it
+  // undefined (no banner) rather than blocking the start panel.
+  const [siteId, setSiteId] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     const load = (): void => {
@@ -51,6 +56,10 @@ function StartPanel({ onStarted }: { onStarted: () => void }): React.JSX.Element
         .catch((err: unknown) => setError(String(err)))
     }
     load()
+    window.ghost.target
+      .getInfo()
+      .then((info) => setSiteId(info.id))
+      .catch(() => undefined)
     return window.ghost.library.onChanged(load)
   }, [])
 
@@ -66,9 +75,19 @@ function StartPanel({ onStarted }: { onStarted: () => void }): React.JSX.Element
 
   const needed = collectInputs(skill)
   const ready = skillId !== '' && needed.every((key) => (inputs[key] ?? '').trim() !== '')
+  const unfamiliar = siteId !== undefined && isUnfamiliarSiteId(siteId)
 
   const start = (mode: RunMode): void => {
     if (!ready) return
+    if (
+      mode === 'assisted' &&
+      unfamiliar &&
+      !window.confirm(
+        'This site is unfamiliar — assisted runs act on their own. Start an assisted run anyway?'
+      )
+    ) {
+      return
+    }
     setBusy(true)
     setError(null)
     window.ghost.runs
@@ -78,12 +97,22 @@ function StartPanel({ onStarted }: { onStarted: () => void }): React.JSX.Element
       .finally(() => setBusy(false))
   }
 
+  const guideRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (unfamiliar) guideRef.current?.focus()
+  }, [unfamiliar])
+
   return (
     <div className="card" data-semid="run-start-panel">
       <h2>Reuse a skill</h2>
       {error !== null && (
         <p className="alert-error" role="alert">
           {error}
+        </p>
+      )}
+      {unfamiliar && (
+        <p className="alert-warn" role="status" data-semid="unfamiliar-site-banner">
+          Unfamiliar site — guided mode recommended: you confirm each step.
         </p>
       )}
       <div className="field">
@@ -96,7 +125,7 @@ function StartPanel({ onStarted }: { onStarted: () => void }): React.JSX.Element
         >
           {skills.map((row) => (
             <option key={row.id} value={row.id}>
-              {row.name} (v{row.activeVersion})
+              {row.name} (v{row.activeVersion}){row.siteId ? ` · ${row.siteId}` : ''}
             </option>
           ))}
         </select>
@@ -119,6 +148,7 @@ function StartPanel({ onStarted }: { onStarted: () => void }): React.JSX.Element
       )}
       <div className="field">
         <Button
+          ref={guideRef}
           variant="primary"
           data-semid="guide-me"
           disabled={busy || !ready}
@@ -148,6 +178,8 @@ function RunView({
   const [compact, setCompact] = useState(false)
   const [explanation, setExplanation] = useState<string | null>(null)
   const [providerId, setProviderId] = useState<ProviderId>('fixture')
+  const providerTouched = useRef(false)
+  const [skillSiteId, setSkillSiteId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const done = TERMINAL.has(progress.status)
   const current = progress.current
@@ -155,6 +187,26 @@ function RunView({
   useEffect(() => {
     setExplanation(null)
   }, [progress.runId, current?.id])
+
+  useEffect(() => {
+    window.ghost.providers
+      .getDefault()
+      .then((next) => {
+        if (!providerTouched.current) setProviderId(next)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    setSkillSiteId(null)
+    window.ghost.skills
+      .get(progress.skillId)
+      .then((skill) => {
+        const record = skill?.versions.find((v) => v.version === skill.activeVersion)
+        setSkillSiteId(record?.recipe.allowedApplications[0] ?? null)
+      })
+      .catch(() => undefined)
+  }, [progress.skillId])
 
   const run = (action: () => Promise<unknown>): void => {
     setError(null)
@@ -246,11 +298,21 @@ function RunView({
               aria-label="Explanation provider"
               data-semid="explain-provider"
               value={providerId}
-              onChange={(event) => setProviderId(event.target.value as ProviderId)}
+              onChange={(event) => {
+                providerTouched.current = true
+                setProviderId(event.target.value as ProviderId)
+              }}
             >
               <option value="fixture">Fixture</option>
               <option value="meta">Meta</option>
             </select>
+            {providerId === 'fixture' &&
+              skillSiteId !== null &&
+              skillSiteId !== TARGET.id && (
+                <p className="muted" data-semid="fixture-site-hint">
+                  Fixture is tuned for Saltbreak; set MODEL_API_KEY for general sites.
+                </p>
+              )}
           </div>
           <div className="field">
             {progress.status === 'running' && !progress.awaitingApproval && (

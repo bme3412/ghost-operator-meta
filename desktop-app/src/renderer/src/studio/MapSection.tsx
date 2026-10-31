@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Background, Controls, ReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import type { Recording, RunRecord, Skill, SkillSummary } from '../../../shared/schemas'
+import type {
+  Recording,
+  RunRecord,
+  Skill,
+  SkillSummary,
+  Suggestion
+} from '../../../shared/schemas'
+import { Button } from '../components/Button'
+import { SiteMapSection } from './SiteMapSection'
 
 const X_MAIN = 40
 const X_SIDE = 460
@@ -20,7 +28,63 @@ export function MapSection(): React.JSX.Element {
   const [version, setVersion] = useState<number | null>(null)
   const [recordings, setRecordings] = useState<Recording[]>([])
   const [runs, setRuns] = useState<RunRecord[]>([])
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [mode, setMode] = useState<'skill' | 'site'>('skill')
+  const [polishWarning, setPolishWarning] = useState<string | null>(null)
+  const [polishing, setPolishing] = useState(false)
+  const [aiAvailable, setAiAvailable] = useState(false)
+
+  const refreshSuggestions = useCallback(() => {
+    window.ghost.suggest
+      .list()
+      .then((rows) => setSuggestions(rows.filter((row) => row.status === 'new')))
+      .catch((err: unknown) => setError(String(err)))
+  }, [])
+
+  useEffect(() => {
+    refreshSuggestions()
+    return window.ghost.library.onChanged(refreshSuggestions)
+  }, [refreshSuggestions])
+
+  const dismissSuggestion = (id: string): void => {
+    window.ghost.suggest
+      .dismiss(id)
+      .then(refreshSuggestions)
+      .catch((err: unknown) => setError(String(err)))
+  }
+
+  // Accept pushes a Teach prefill to the toolbar; the list refreshes off libraryChanged.
+  const teachSuggestion = (id: string): void => {
+    window.ghost.suggest
+      .accept(id)
+      .then(refreshSuggestions)
+      .catch((err: unknown) => setError(String(err)))
+  }
+
+  // The default provider is meta exactly when a model key is configured
+  // (absent an explicit override); polish stays disabled without one.
+  useEffect(() => {
+    window.ghost.providers
+      .getDefault()
+      .then((provider) => setAiAvailable(provider === 'meta'))
+      .catch(() => setAiAvailable(false))
+  }, [])
+
+  // Polish rewrites the queue through the model; failures keep the
+  // heuristic rows and surface the warning instead of throwing.
+  const polishSuggestions = (): void => {
+    setPolishing(true)
+    setPolishWarning(null)
+    window.ghost.suggest
+      .listPolished()
+      .then((result) => {
+        setSuggestions(result.suggestions.filter((row) => row.status === 'new'))
+        setPolishWarning(result.warning)
+      })
+      .catch((err: unknown) => setError(String(err)))
+      .finally(() => setPolishing(false))
+  }
 
   useEffect(() => {
     window.ghost.skills
@@ -132,8 +196,89 @@ export function MapSection(): React.JSX.Element {
           {error}
         </p>
       )}
-      {summaries.length === 0 && <p className="muted">No skills yet. Compile a recording first.</p>}
-      {summaries.length > 0 && (
+      <section aria-label="Suggestions" className="card">
+        <h3>Suggestions</h3>
+        <div className="teach-actions">
+          <Button
+            data-testid="suggestions-polish"
+            data-semid="suggestions-polish"
+            disabled={!aiAvailable || polishing}
+            title={
+              aiAvailable ? 'Merge and rank suggestions with AI' : 'Set MODEL_API_KEY to enable AI polish'
+            }
+            onClick={polishSuggestions}
+          >
+            {polishing ? 'Polishing…' : 'Polish with AI'}
+          </Button>
+        </div>
+        {!aiAvailable && (
+          <p className="muted" data-semid="suggestions-polish-hint">
+            Set MODEL_API_KEY to enable AI polish.
+          </p>
+        )}
+        {polishWarning !== null && (
+          <p className="alert-warn" role="status" data-semid="suggestions-polish-warning">
+            {polishWarning}
+          </p>
+        )}
+        {suggestions.length === 0 && (
+          <p className="muted">No suggestions yet. Finish a recording to mine new ones.</p>
+        )}
+        {suggestions.length > 0 && (
+          <ul data-testid="suggestions-list" data-semid="suggestions-list">
+            {suggestions.map((suggestion) => (
+              <li
+                key={suggestion.id}
+                data-testid={`suggestion-${suggestion.id}`}
+                data-semid={`suggestion-${suggestion.id}`}
+              >
+                <strong>{suggestion.title}</strong>
+                <p className="muted">{suggestion.why}</p>
+                <div className="teach-actions">
+                  <Button
+                    variant="primary"
+                    data-testid={`suggestion-teach-${suggestion.id}`}
+                    data-semid={`suggestion-teach-${suggestion.id}`}
+                    onClick={() => teachSuggestion(suggestion.id)}
+                  >
+                    Teach this
+                  </Button>
+                  <Button
+                    data-testid={`suggestion-dismiss-${suggestion.id}`}
+                    data-semid={`suggestion-dismiss-${suggestion.id}`}
+                    onClick={() => dismissSuggestion(suggestion.id)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <div className="field" role="group" aria-label="Map mode">
+        <Button
+          variant={mode === 'skill' ? 'primary' : 'default'}
+          data-testid="map-mode-skill"
+          data-semid="map-mode-skill"
+          onClick={() => setMode('skill')}
+        >
+          Skill
+        </Button>
+        <Button
+          variant={mode === 'site' ? 'primary' : 'default'}
+          data-testid="map-mode-site"
+          data-semid="map-mode-site"
+          onClick={() => setMode('site')}
+        >
+          Site
+        </Button>
+      </div>
+      {mode === 'site' && <SiteMapSection />}
+      {mode === 'skill' && summaries.length === 0 && (
+        <p className="muted">No skills yet. Compile a recording first.</p>
+      )}
+      {mode === 'skill' && summaries.length > 0 && (
         <>
           <div className="field">
             <label htmlFor="map-skill">Skill</label>

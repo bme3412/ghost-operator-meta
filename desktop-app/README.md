@@ -63,6 +63,10 @@ pnpm dist       # .dmg in release/
 
 ## Environment
 
+Copy `.env.example` to `.env.local` (gitignored) for local keys. Real
+environment variables always win over that file. Packaged builds read
+`.env.local` from the app's userData directory instead.
+
 | Variable | Default | Purpose |
 | - | - | - |
 | `TARGET_URL` | `http://localhost:3000` | Saltbreak URL the target window loads (`SALTBREAK_URL` also honored) |
@@ -87,6 +91,11 @@ pnpm dist       # .dmg in release/
 10. Step through (guide) or watch (assisted) as the new ticket is resolved.
 11. Verify: the ticket status in Saltbreak, and the checks in the sidecar.
 12. Open the run in Studio → Runs for the readable record.
+
+Discover (no demo needed): open Studio → Task map → **Site** → **Scan site**,
+watch `/staff/inbox` land in the page graph, then read the mined follow-ups
+in Suggestions — e.g. `Automate submission on /staff/inbox`. Click **Teach this**
+on one to open the toolbar Teach form with its goal prefilled.
 
 ## Architecture
 

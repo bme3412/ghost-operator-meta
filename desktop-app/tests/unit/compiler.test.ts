@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { validateRecipe } from '../../src/main/compiler/index'
 import { compileFixture } from '../../src/main/providers/fixture'
+import { Recording as RecordingSchema } from '../../src/shared/schemas'
 import type { Recording, SkillRecipe } from '../../src/shared/schemas'
 
 const NOW = Date.parse('2026-10-31T12:00:00.000Z')
@@ -104,6 +105,61 @@ describe('fixture compiler', () => {
     }
     const proposal = compileFixture(gappy)
     expect(proposal.unresolved.join(' ')).toContain('pause gap')
+  })
+
+  it('omits selectorCandidates when events carry no chain', () => {
+    const proposal = compileFixture(demoRecording())
+    for (const s of proposal.recipe.steps) {
+      expect(s.selectorCandidates).toBeUndefined()
+    }
+  })
+
+  it('passes substituted fallback candidates through to steps', () => {
+    const chained: Recording = {
+      ...demoRecording(),
+      events: [
+        {
+          sequence: 0,
+          type: 'click',
+          semanticId: 'ticket-resolve-T-101',
+          selector: '[data-semid="ticket-resolve-T-101"]',
+          selectorCandidates: [
+            '[data-semid="ticket-resolve-T-101"]',
+            '#ticket-resolve-T-101',
+            'button:nth-of-type(1)'
+          ],
+          recordIdentity: 'T-101',
+          atMs: NOW
+        }
+      ]
+    }
+    const proposal = compileFixture(chained)
+    const click = proposal.recipe.steps.find((s) => s.id === 'click-ticket-resolve-t-101')
+    expect(click?.bindings['selector']).toBe('[data-semid="ticket-resolve-{{inputs.ticketId}}"]')
+    expect(click?.selectorCandidates).toEqual([
+      '#ticket-resolve-{{inputs.ticketId}}',
+      'button:nth-of-type(1)'
+    ])
+  })
+
+  it('parses legacy recordings and chained events without migration', () => {
+    expect(() => RecordingSchema.parse(demoRecording())).not.toThrow()
+    const chained = {
+      ...demoRecording(),
+      events: [
+        {
+          sequence: 0,
+          type: 'click',
+          selector: '#a',
+          selectorCandidates: ['#a', '[name="a"]'],
+          accessibleRole: 'button',
+          accessibleLabel: 'A',
+          atMs: NOW
+        }
+      ]
+    }
+    const parsed = RecordingSchema.parse(chained)
+    expect(parsed.events[0]?.selectorCandidates).toEqual(['#a', '[name="a"]'])
   })
 })
 

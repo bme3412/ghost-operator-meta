@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { recipeErrorsFromRejection } from '../../../shared/policy/recipe'
 import {
   SkillRecipe,
   type Skill,
@@ -6,6 +7,7 @@ import {
   type SkillVersionRecord
 } from '../../../shared/schemas'
 import { stepOutcomes } from '../../../shared/skills/branches'
+import { countReviewItems } from '../../../shared/skills/review'
 import { Button } from '../components/Button'
 
 export function SkillsSection({ focusId }: { focusId: string | null }): React.JSX.Element {
@@ -17,7 +19,24 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
   const [recipeJson, setRecipeJson] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recipeErrors, setRecipeErrors] = useState<string[] | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+
+  const showError = useCallback((err: unknown): void => {
+    const list = recipeErrorsFromRejection(err)
+    if (list) {
+      setRecipeErrors(list)
+      setError(null)
+    } else {
+      setRecipeErrors(null)
+      setError(String(err))
+    }
+  }, [])
+
+  const clearError = useCallback((): void => {
+    setError(null)
+    setRecipeErrors(null)
+  }, [])
 
   const refreshList = useCallback(() => {
     window.ghost.skills
@@ -78,7 +97,7 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
       return
     }
     setBusy(true)
-    setError(null)
+    clearError()
     window.ghost.skills
       .updateDraft({ skillId: skill.id, version: record.version, recipe, instructions })
       .then((next) => {
@@ -86,14 +105,14 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
         refreshList()
         setNotice('Draft saved.')
       })
-      .catch((err: unknown) => setError(String(err)))
+      .catch(showError)
       .finally(() => setBusy(false))
   }
 
   const publish = (): void => {
     if (!skill || !record) return
     setBusy(true)
-    setError(null)
+    clearError()
     window.ghost.skills
       .publish({ skillId: skill.id, version: record.version })
       .then((next) => {
@@ -101,14 +120,14 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
         refreshList()
         setNotice(`Version ${record.version} published.`)
       })
-      .catch((err: unknown) => setError(String(err)))
+      .catch(showError)
       .finally(() => setBusy(false))
   }
 
   const newDraftFromPublished = (): void => {
     if (!skill || !record) return
     setBusy(true)
-    setError(null)
+    clearError()
     window.ghost.skills
       .saveDraft({
         skillId: skill.id,
@@ -125,11 +144,12 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
         setVersion(latest?.version ?? null)
         setNotice('New draft version created.')
       })
-      .catch((err: unknown) => setError(String(err)))
+      .catch(showError)
       .finally(() => setBusy(false))
   }
 
   const isDraft = record?.status === 'draft'
+  const reviewCount = record ? countReviewItems(record.recipe, record.unresolved) : 0
 
   return (
     <div className="studio-split">
@@ -157,6 +177,13 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
           <p className="alert-error" role="alert">
             {error}
           </p>
+        )}
+        {recipeErrors !== null && (
+          <ul className="alert-error" role="alert" data-semid="skill-recipe-errors">
+            {recipeErrors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
         )}
         {notice !== null && (
           <p className="alert-success" role="status">
@@ -261,6 +288,12 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
                     onChange={(event) => setRecipeJson(event.target.value)}
                   />
                 </section>
+                {reviewCount > 0 && (
+                  <p className="alert-warn" role="status" data-semid="guided-run-nudge">
+                    Contains {reviewCount} review item{reviewCount === 1 ? '' : 's'} — guided
+                    runs recommended.
+                  </p>
+                )}
                 <div className="field">
                   {isDraft && (
                     <>

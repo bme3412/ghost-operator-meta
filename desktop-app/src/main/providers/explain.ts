@@ -1,5 +1,4 @@
 import type { ProviderId, RunStepView } from '../../shared/schemas'
-import { TARGET } from '../../shared/target'
 
 export interface ExplainEnv {
   META_BASE_URL?: string
@@ -47,7 +46,8 @@ export async function explainMeta(
       messages: [
         {
           role: 'system',
-          content: `Explain one ${TARGET.name} procedure step in two or three plain sentences: what to do, why it matters, and how to confirm it. No preamble, no markdown.`
+          content:
+            'Explain one procedure step in two or three plain sentences: what to do, why it matters, and how to confirm it. No preamble, no markdown.'
         },
         {
           role: 'user',

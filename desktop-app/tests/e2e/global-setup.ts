@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 
-const here = dirname(fileURLToPath(import.meta.url))
+// Playwright loads this file as CommonJS (no "type": "module"), so import.meta
+// is unavailable; __dirname is the equivalent anchor here.
+const here = __dirname
 const webApp = resolve(here, '..', '..', '..', 'web-app')
 const dbPath = join(tmpdir(), 'ghost-e2e-saltbreak.db')
 

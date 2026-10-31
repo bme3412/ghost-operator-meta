@@ -1,4 +1,5 @@
 import { BrowserWindow, screen } from 'electron'
+import { applyAppWindowGuards } from './guards'
 import { baseWebPreferences, loadPage } from './shared'
 
 /** Guidance panel docked beside the target window when space allows. */
@@ -32,6 +33,7 @@ export function createSidecarWindow(target: BrowserWindow): BrowserWindow {
   place()
 
   window.once('ready-to-show', () => window.show())
+  applyAppWindowGuards(window)
   loadPage(window, 'sidecar')
   return window
 }

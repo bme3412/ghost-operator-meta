@@ -3,6 +3,9 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Recording, RecorderStatePush } from '../../shared/schemas'
 import { loadState, saveState } from '../store'
+import { appendMinedSuggestions } from '../suggest'
+import { mineRecording } from '../suggest/mine'
+import { getTargetInfo } from '../target'
 import { getWindow } from '../windows/registry'
 import { EVENTS } from '../ipc/channels'
 import { createRecorder, type Recorder } from './index'
@@ -36,7 +39,13 @@ async function captureScreenshot(recordingId: string, sequence: number): Promise
 
 function persistRecording(recording: Recording): void {
   const state = loadState()
-  saveState({ ...state, recordings: [...state.recordings, recording] })
+  // Stamp the site the demonstration ran on; Saltbreak stays "saltbreak".
+  const stamped: Recording = { ...recording, applicationScope: getTargetInfo().id }
+  saveState({ ...state, recordings: [...state.recordings, stamped] })
+  // Mine suggestions from the stamped recording. Ids are stable hashes, so
+  // re-persisting never duplicates.
+  const mined = mineRecording(stamped)
+  if (mined.length > 0) appendMinedSuggestions(mined)
 }
 
 function broadcast(push: RecorderStatePush): void {

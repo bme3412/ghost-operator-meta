@@ -10,13 +10,27 @@ import type {
   RunProgress,
   RunRecord,
   SaveDraftRequest,
+  ScoutProgress,
+  ScoutStatus,
   Skill,
   SkillSummary,
   StartRunRequest,
   StudioShowPayload,
+  Suggestion,
+  SuggestAcceptPrefill,
+  SuggestPolishResult,
+  TeachPrefillPayload,
   UpdateDraftRequest
 } from '../shared/schemas'
 import type { TargetInfo } from '../shared/target'
+import { nextNavigateToEmit } from '../shared/capture/navigate'
+import {
+  buildAccessibleDescriptor,
+  buildSelectorCandidates,
+  escapeCssIdentifier,
+  selectBestSelector,
+  type SelectorElementSnapshot
+} from '../shared/capture/selectors'
 
 function on(channel: string, listener: () => void): () => void {
   const wrapped = (): void => listener()
@@ -35,7 +49,8 @@ const api = {
   echo: (message: string): Promise<{ message: string }> =>
     ipcRenderer.invoke('ghost:echo', { message }),
   target: {
-    getInfo: (): Promise<TargetInfo> => ipcRenderer.invoke('target:get-info')
+    getInfo: (): Promise<TargetInfo> => ipcRenderer.invoke('target:get-info'),
+    setUrl: (url: string): Promise<TargetInfo> => ipcRenderer.invoke('target:set-url', { url })
   },
   /** Guidance highlight from the runner. Null clears the highlight. */
   onHighlight: (listener: (semanticId: string | null) => void): (() => void) =>
@@ -59,7 +74,30 @@ const api = {
   },
   toolbar: {
     setHeight: (height: number): Promise<void> =>
-      ipcRenderer.invoke('toolbar:set-height', { height })
+      ipcRenderer.invoke('toolbar:set-height', { height }),
+    onTeachPrefill: (listener: (payload: TeachPrefillPayload) => void): (() => void) =>
+      onPayload<TeachPrefillPayload>('ghost:teach-prefill', listener)
+  },
+  suggest: {
+    list: (siteId?: string): Promise<Suggestion[]> =>
+      ipcRenderer.invoke('suggest:list', siteId === undefined ? {} : { siteId }),
+    listPolished: (siteId?: string): Promise<SuggestPolishResult> =>
+      ipcRenderer.invoke(
+        'suggest:list',
+        siteId === undefined ? { polish: true } : { siteId, polish: true }
+      ),
+    dismiss: (id: string): Promise<Suggestion> =>
+      ipcRenderer.invoke('suggest:dismiss', { id }),
+    accept: (id: string): Promise<SuggestAcceptPrefill> =>
+      ipcRenderer.invoke('suggest:accept', { id })
+  },
+  scout: {
+    start: (siteId?: string): Promise<ScoutStatus> =>
+      ipcRenderer.invoke('scout:start', siteId === undefined ? {} : { siteId }),
+    cancel: (): Promise<ScoutStatus> => ipcRenderer.invoke('scout:cancel'),
+    getStatus: (): Promise<ScoutStatus> => ipcRenderer.invoke('scout:status'),
+    onProgress: (listener: (progress: ScoutProgress) => void): (() => void) =>
+      onPayload<ScoutProgress>('ghost:scout-progress', listener)
   },
   recordings: {
     list: (): Promise<RecordingSummary[]> => ipcRenderer.invoke('recordings:list'),
@@ -82,6 +120,9 @@ const api = {
   studio: {
     onShow: (listener: (payload: StudioShowPayload) => void): (() => void) =>
       onPayload<StudioShowPayload>('ghost:studio-show', listener)
+  },
+  providers: {
+    getDefault: (): Promise<ProviderId> => ipcRenderer.invoke('providers:default')
   },
   library: {
     onChanged: (listener: () => void): (() => void) => on('ghost:library-changed', listener)
@@ -115,9 +156,58 @@ const api = {
   }
 }
 
-export type GhostApi = typeof api
+/**
+ * Minimal capture-only surface for the target window (untrusted remote
+ * content). Navigate/click/change/submit recording runs inside this preload
+ * below; the page itself can only read recorder state and subscribe to the
+ * state and highlight pushes. Everything else is app-window-only.
+ */
+const targetApi = {
+  recorder: {
+    getState: (): Promise<RecorderStatePush> => ipcRenderer.invoke('recorder:get-state'),
+    onState: (listener: (push: RecorderStatePush) => void): (() => void) =>
+      onPayload<RecorderStatePush>('ghost:recording-state', listener)
+  },
+  onHighlight: (listener: (semanticId: string | null) => void): (() => void) =>
+    onPayload<string | null>('ghost:highlight', listener)
+}
 
-contextBridge.exposeInMainWorld('ghost', api)
+/**
+ * True when this preload runs in the target window. The main process passes
+ * --ghost-role=target via additionalArguments; the URL fallback covers
+ * sandboxed contexts where process.argv is unavailable. App pages are local
+ * files in production, or dev-server pages ending in
+ * toolbar/sidecar/studio.html in development.
+ */
+function isTargetRole(): boolean {
+  try {
+    if (typeof process !== 'undefined' && process.argv.includes('--ghost-role=target')) {
+      return true
+    }
+  } catch {
+    // process is unavailable; fall through to the URL check.
+  }
+  try {
+    const { protocol, pathname } = window.location
+    if (pathname.endsWith('/target-offline.html')) return true
+    if (protocol === 'http:' || protocol === 'https:') {
+      return !/(toolbar|sidecar|studio)\.html$/.test(pathname)
+    }
+  } catch {
+    // location is unavailable; default to the app bridge.
+  }
+  return false
+}
+
+export type GhostApi = typeof api
+export type GhostTargetApi = typeof targetApi
+
+if (isTargetRole()) {
+  contextBridge.exposeInMainWorld('ghost', targetApi)
+  installTargetCapture()
+} else {
+  contextBridge.exposeInMainWorld('ghost', api)
+}
 
 /**
  * Capture mode for the target window (a remote web app, not our renderer).
@@ -128,10 +218,70 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
-function selectorFor(element: Element): string | undefined {
-  const semid = element.getAttribute('data-semid')
-  if (semid) return `[data-semid="${semid}"]`
-  return undefined
+/** Maximum ancestor levels in the last-resort CSS path. */
+const CSS_PATH_MAX_DEPTH = 4
+
+/**
+ * Capped-depth CSS path for an element (tag + nth-of-type segments joined
+ * with child combinators). Anchored at the nearest id in reach, otherwise
+ * relative — a last-resort replay candidate. DOM reads only.
+ */
+function cssPathFor(element: Element): string | undefined {
+  const segments: string[] = []
+  let current: Element | null = element
+  for (let depth = 0; depth < CSS_PATH_MAX_DEPTH && current; depth += 1) {
+    const id = current.getAttribute('id')
+    if (id && id.trim()) {
+      segments.unshift(`#${escapeCssIdentifier(id)}`)
+      return segments.join(' > ')
+    }
+    const tag = current.tagName.toLowerCase()
+    if (!/^[a-z][a-z0-9-]*$/.test(tag)) break
+    let index = 1
+    let sibling = current.previousElementSibling
+    while (sibling) {
+      if (sibling.tagName === current.tagName) index += 1
+      sibling = sibling.previousElementSibling
+    }
+    segments.unshift(`${tag}:nth-of-type(${index})`)
+    if (tag === 'html') break
+    current = current.parentElement
+  }
+  return segments.length > 0 ? segments.join(' > ') : undefined
+}
+
+function snapshotFor(element: Element): SelectorElementSnapshot {
+  return {
+    semid: element.getAttribute('data-semid'),
+    id: element.getAttribute('id'),
+    testId: element.getAttribute('data-testid'),
+    testAttr: element.getAttribute('data-test'),
+    name: element.getAttribute('name'),
+    cssPath: cssPathFor(element)
+  }
+}
+
+/**
+ * Ordered replay chain plus the legacy single selector (best entry) and the
+ * accessible fallback descriptor. Computed once per captured element.
+ */
+function chainFor(element: Element): {
+  selector: string | undefined
+  selectorCandidates: string[] | undefined
+  accessibleRole: string | undefined
+  accessibleLabel: string | undefined
+} {
+  const chain = buildSelectorCandidates(snapshotFor(element))
+  const accessible = buildAccessibleDescriptor({
+    role: element.getAttribute('role'),
+    label: element.getAttribute('aria-label')
+  })
+  return {
+    selector: selectBestSelector(chain),
+    selectorCandidates: chain.length > 0 ? chain : undefined,
+    accessibleRole: accessible?.role,
+    accessibleLabel: accessible?.label
+  }
 }
 
 function recordIdentityFor(element: Element): string | undefined {
@@ -159,14 +309,22 @@ function installTargetCapture(): void {
     ipcRenderer.invoke('recorder:events', events).catch(() => undefined)
   }
 
-  const recordNavigate = (): void => {
-    send([{ type: 'navigate', value: window.location.pathname, atMs: Date.now() }])
+  let lastNavigatePath: string | null = null
+  const emitNavigate = (): void => {
+    const path = nextNavigateToEmit(lastNavigatePath, window.location.pathname)
+    if (!path) return
+    lastNavigatePath = path
+    send([{ type: 'navigate', value: path, atMs: Date.now() }])
   }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', recordNavigate, { once: true })
+    document.addEventListener('DOMContentLoaded', emitNavigate, { once: true })
   } else {
-    recordNavigate()
+    emitNavigate()
   }
+
+  // Full page loads only. Same-document (SPA) route changes are observed
+  // from the main process (did-navigate-in-page): this isolated context
+  // cannot patch the page's own history object.
 
   document.addEventListener(
     'click',
@@ -178,11 +336,15 @@ function installTargetCapture(): void {
       if (!(hit instanceof Element)) return
       const rect = hit.getBoundingClientRect()
       const semid = hit.getAttribute('data-semid') ?? undefined
+      const chain = chainFor(hit)
       send([
         {
           type: 'click',
           semanticId: semid,
-          selector: selectorFor(hit),
+          selector: chain.selector,
+          selectorCandidates: chain.selectorCandidates,
+          accessibleRole: chain.accessibleRole,
+          accessibleLabel: chain.accessibleLabel,
           targetRole: hit.getAttribute('role') ?? hit.tagName.toLowerCase(),
           targetLabel:
             hit.getAttribute('aria-label') ?? truncate(hit.textContent?.trim() ?? '', 120) ?? undefined,
@@ -214,11 +376,15 @@ function installTargetCapture(): void {
       }
       if (target instanceof HTMLInputElement && target.type === 'password') return
       const rect = target.getBoundingClientRect()
+      const chain = chainFor(target)
       send([
         {
           type: target.tagName === 'SELECT' ? 'select' : 'input_commit',
           semanticId: target.getAttribute('data-semid') ?? undefined,
-          selector: selectorFor(target),
+          selector: chain.selector,
+          selectorCandidates: chain.selectorCandidates,
+          accessibleRole: chain.accessibleRole,
+          accessibleLabel: chain.accessibleLabel,
           targetRole: target.tagName.toLowerCase(),
           targetLabel: target.getAttribute('aria-label') ?? target.name ?? undefined,
           value: truncate(target.value, 500),
@@ -242,11 +408,15 @@ function installTargetCapture(): void {
       if (!active) return
       const target = event.target
       if (!(target instanceof HTMLFormElement)) return
+      const chain = chainFor(target)
       send([
         {
           type: 'submit',
           semanticId: target.getAttribute('data-semid') ?? undefined,
-          selector: selectorFor(target),
+          selector: chain.selector,
+          selectorCandidates: chain.selectorCandidates,
+          accessibleRole: chain.accessibleRole,
+          accessibleLabel: chain.accessibleLabel,
           recordIdentity: recordIdentityFor(target),
           atMs: Date.now()
         }
@@ -276,10 +446,3 @@ function installTargetCapture(): void {
   })
 }
 
-try {
-  if (process.argv.includes('--ghost-role=target')) {
-    installTargetCapture()
-  }
-} catch {
-  // process.argv is unavailable in some contexts; capture stays disabled.
-}

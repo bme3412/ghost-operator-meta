@@ -29,7 +29,9 @@ export const SkillSummary = z.object({
   name: z.string().min(1),
   activeVersion: z.number().int().positive().nullable(),
   latestVersion: z.number().int().positive(),
-  latestStatus: SkillStatus
+  latestStatus: SkillStatus,
+  /** Creating site id (recipe.allowedApplications[0]); null when unrecorded. */
+  siteId: z.string().min(1).nullable()
 })
 export type SkillSummary = z.infer<typeof SkillSummary>
 

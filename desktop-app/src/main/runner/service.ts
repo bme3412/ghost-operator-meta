@@ -8,9 +8,20 @@ import { upsertRun } from '../store'
 import { resolveTargetUrl } from '../target'
 import { getWindow } from '../windows/registry'
 import { createRunner, type Runner } from './index'
-
-/** Settle delay after DOM actions so server round-trips can land. Prototype timing. */
-const SETTLE_MS = 750
+import {
+  clickSnippet,
+  fillSnippet,
+  submitSnippet,
+  textSnippet,
+  valueSnippet,
+  visibleSnippet
+} from './snippets'
+import {
+  FALLBACK_SETTLE_MS,
+  GOTO_LOAD_TIMEOUT_MS,
+  startPageLoadWait,
+  type LoadEventSource
+} from './wait'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -20,6 +31,20 @@ function contents(): Electron.WebContents {
   const target = getWindow('target')
   if (!target) throw new Error('Target window is not available.')
   return target.webContents
+}
+
+/** Adapt a WebContents to the pure load-wait helper (branching keeps overloads happy). */
+function loadSource(wc: Electron.WebContents): LoadEventSource {
+  return {
+    on(event, listener) {
+      if (event === 'did-finish-load') wc.on('did-finish-load', listener)
+      else wc.on('did-fail-load', listener)
+    },
+    removeListener(event, listener) {
+      if (event === 'did-finish-load') wc.removeListener('did-finish-load', listener)
+      else wc.removeListener('did-fail-load', listener)
+    }
+  }
 }
 
 async function dom<T>(code: string): Promise<T> {
@@ -61,49 +86,25 @@ export function getRunner(): Runner {
         return { skillName: skill.name, recipe: record.recipe }
       },
       domQuery: {
-        visible: (selector: string): Promise<boolean> =>
-          dom<boolean>(`!!document.querySelector(${JSON.stringify(selector)})`),
+        visible: (selector: string): Promise<boolean> => dom<boolean>(visibleSnippet(selector)),
         text: (selector: string): Promise<string | null> =>
-          dom<string | null>(
-            `(() => { const el = document.querySelector(${JSON.stringify(selector)}); return el ? (el.textContent ?? '').slice(0, 5000) : null; })()`
-          ),
+          dom<string | null>(textSnippet(selector)),
         value: (selector: string): Promise<string | null> =>
-          dom<string | null>(
-            `(() => { const el = document.querySelector(${JSON.stringify(selector)}); const v = el?.value; return typeof v === 'string' ? v : null; })()`
-          )
+          dom<string | null>(valueSnippet(selector))
       },
       domAct: {
         click: async (selector: string): Promise<void> => {
-          await dom(
-            `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('missing ' + ${JSON.stringify(selector)}); el.scrollIntoView({ block: 'nearest' }); el.click(); })()`
-          )
-          await sleep(SETTLE_MS)
+          await dom(clickSnippet(selector))
+          // Small capped fallback; the runner core waits on check selectors.
+          await sleep(FALLBACK_SETTLE_MS)
         },
         fill: async (selector: string, value: string): Promise<void> => {
-          await dom(`(() => {
-            const el = document.querySelector(${JSON.stringify(selector)});
-            if (!el || !('value' in el)) throw new Error('cannot fill ' + ${JSON.stringify(selector)});
-            const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
-              : el instanceof HTMLSelectElement ? null : HTMLInputElement.prototype;
-            if (proto) {
-              const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-              if (setter) setter.call(el, ${JSON.stringify(value)});
-              else el.value = ${JSON.stringify(value)};
-            } else {
-              el.value = ${JSON.stringify(value)};
-            }
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-          })()`)
+          await dom(fillSnippet(selector, value))
+          await sleep(FALLBACK_SETTLE_MS)
         },
         submit: async (selector: string): Promise<void> => {
-          await dom(`(() => {
-            const el = document.querySelector(${JSON.stringify(selector)});
-            const form = el instanceof HTMLFormElement ? el : el?.closest('form');
-            if (!form) throw new Error('cannot submit ' + ${JSON.stringify(selector)} + ': no form');
-            form.requestSubmit();
-          })()`)
-          await sleep(SETTLE_MS)
+          await dom(submitSnippet(selector))
+          await sleep(FALLBACK_SETTLE_MS)
         },
         goto: async (path: string): Promise<void> => {
           const target = getWindow('target')
@@ -111,7 +112,18 @@ export function getRunner(): Runner {
           const url = path.startsWith('http')
             ? path
             : `${resolveTargetUrl()}${path.startsWith('/') ? path : `/${path}`}`
-          await target.loadURL(url)
+          // Attach before navigating so the load event cannot slip past us.
+          const load = startPageLoadWait(loadSource(target.webContents), {
+            timeoutMs: GOTO_LOAD_TIMEOUT_MS
+          })
+          try {
+            await target.loadURL(url)
+          } catch (error) {
+            load.cancel()
+            throw new Error(`Navigation to ${url} failed: ${(error as Error).message}`)
+          }
+          await load.promise
+          await sleep(FALLBACK_SETTLE_MS)
         }
       },
       persistRun: upsertRun,
