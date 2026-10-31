@@ -22,6 +22,12 @@ export interface PanelNav {
   skillId?: string
   runId?: string
   goal?: string
+  /** Example input prefill for the Teach form (from a page idea). */
+  example?: string
+  /** Curated starter task id for the review view (instead of a recording). */
+  scriptedId?: string
+  /** Default skill name for the curated review flow. */
+  scriptName?: string
   libraryTab?: LibraryTab
   /** Focused record inside a library tab (skill, run, or recording id). */
   focusId?: string

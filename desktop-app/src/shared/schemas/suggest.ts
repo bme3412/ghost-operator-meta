@@ -53,3 +53,39 @@ export interface SuggestAcceptPrefill {
   goal: string
   siteId: string
 }
+
+/** One automatable-task idea for the currently open page. Not persisted. */
+export const PageIdea = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  why: z.string().min(1),
+  exampleInput: z.string().min(1).optional(),
+  cites: z.array(z.string()).default([]),
+  confidence: z.enum(['high', 'medium', 'low'])
+})
+export type PageIdea = z.infer<typeof PageIdea>
+
+/** suggest:page result: ideas for the live page plus their provenance. */
+export interface PageIdeasResult {
+  page: { url: string; path: string; title: string }
+  ideas: PageIdea[]
+  source: 'ai' | 'heuristic'
+  warning: string | null
+}
+
+/**
+ * suggest:page request. refresh bypasses the per-URL memory cache; fast
+ * returns the heuristic list immediately, skipping the model call, so the
+ * panel can paint instantly and replace it when the AI ideas arrive.
+ */
+export const SuggestPageRequest = z.object({
+  refresh: z.boolean().optional(),
+  fast: z.boolean().optional()
+})
+export type SuggestPageRequest = z.infer<typeof SuggestPageRequest>
+
+/** Payload of the ghost:target-page push event. */
+export interface TargetPagePush {
+  url: string
+  title: string
+}

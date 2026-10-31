@@ -20,6 +20,7 @@ export const CHANNELS = {
   skillsList: 'skills:list',
   skillsGet: 'skills:get',
   skillsCompile: 'skills:compile',
+  skillsScript: 'skills:script',
   skillsSaveDraft: 'skills:save-draft',
   skillsUpdateDraft: 'skills:update-draft',
   skillsPublish: 'skills:publish',
@@ -39,6 +40,7 @@ export const CHANNELS = {
   suggestList: 'suggest:list',
   suggestDismiss: 'suggest:dismiss',
   suggestAccept: 'suggest:accept',
+  suggestPage: 'suggest:page',
   scoutStart: 'scout:start',
   scoutCancel: 'scout:cancel',
   scoutStatus: 'scout:status'
@@ -53,7 +55,8 @@ export const EVENTS = {
   panelNavigate: 'ghost:panel-navigate',
   runProgress: 'ghost:run-progress',
   libraryChanged: 'ghost:library-changed',
-  scoutProgress: 'ghost:scout-progress'
+  scoutProgress: 'ghost:scout-progress',
+  targetPage: 'ghost:target-page'
 } as const
 
 export type PushEvent = (typeof EVENTS)[keyof typeof EVENTS]

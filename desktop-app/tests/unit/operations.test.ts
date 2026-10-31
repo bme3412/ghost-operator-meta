@@ -151,3 +151,64 @@ describe('executeComputerTask fallback', () => {
     ).rejects.toThrow('has no value')
   })
 })
+
+describe('executeComputerTask readiness wait', () => {
+  /** DomQuery whose text() answers per-selector from `present`, after `delayMs`. */
+  function fakeQuery(present: string[], delayMs = 0) {
+    const started = Date.now()
+    return {
+      visible: async () => false,
+      text: async (selector: string) => {
+        if (Date.now() - started < delayMs) return null
+        return present.includes(selector) ? '' : null
+      },
+      value: async () => null
+    }
+  }
+
+  it('acts immediately when the selector already exists', async () => {
+    const { deps, attempts } = fakeAct(['#a'])
+    deps.query = fakeQuery(['#a'])
+    const outcome = await executeComputerTask(
+      step({ action: 'click', selector: '#a' }),
+      {},
+      deps
+    )
+    expect(outcome.actions).toEqual(['clicked #a'])
+    expect(attempts).toEqual(['click #a'])
+  })
+
+  it('waits for a late-appearing target, then acts exactly once', async () => {
+    const { deps, attempts } = fakeAct(['#late'])
+    deps.query = fakeQuery(['#late'], 120)
+    deps.readyWait = { timeoutMs: 5000 }
+    const outcome = await executeComputerTask(
+      step({ action: 'click', selector: '#late' }),
+      {},
+      deps
+    )
+    expect(outcome.actions).toEqual(['clicked #late'])
+    expect(attempts).toEqual(['click #late'])
+  })
+
+  it('fails honestly without acting when nothing appears in time', async () => {
+    const { deps, attempts } = fakeAct(['#a'])
+    deps.query = fakeQuery([])
+    deps.readyWait = { timeoutMs: 40 }
+    await expect(
+      executeComputerTask(step({ action: 'fill', selector: '#a', value: 'hi' }), {}, deps)
+    ).rejects.toThrow('target missing')
+    expect(attempts).toEqual([])
+  })
+
+  it('skips the wait when no query is wired', async () => {
+    const { deps, attempts } = fakeAct(['#a'])
+    const outcome = await executeComputerTask(
+      step({ action: 'click', selector: '#a' }),
+      {},
+      deps
+    )
+    expect(outcome.actions).toEqual(['clicked #a'])
+    expect(attempts).toEqual(['click #a'])
+  })
+})

@@ -422,20 +422,6 @@ dd {
   overflow-x: auto;
 }
 
-.home-checklist {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.home-checklist li {
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-}
-
 .panel-root {
   min-height: 100vh;
   background: var(--surface);
@@ -499,7 +485,8 @@ dd {
   padding-top: 8px;
 }
 
-.suggestion-list {
+.suggestion-list,
+.idea-list {
   list-style: none;
   margin: 8px 0 0;
   padding: 0;
@@ -508,13 +495,67 @@ dd {
   gap: 12px;
 }
 
-.suggestion-list > li {
+.suggestion-list > li,
+.idea-list > li {
   border-top: 1px solid var(--border);
   padding-top: 8px;
 }
 
-.suggestion-list p {
+.suggestion-list p,
+.idea-list p {
   margin: 4px 0;
+}
+
+.idea-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.idea-head h2 {
+  margin: 0;
+}
+
+.idea-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.idea-row:hover {
+  background: var(--surface-muted);
+}
+
+.idea-row.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.idea-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idea-row > span {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.idea-row .audience {
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .run-list {
@@ -582,20 +623,9 @@ dd {
   margin-top: 3px;
 }
 
-.disclosure {
-  margin: 8px 0;
+textarea.teach-input {
+  resize: vertical;
 }
-
-.disclosure > summary {
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.disclosure .teach-field {
-  margin-top: 8px;
-}
-
 details.advanced {
   margin-top: 12px;
   border-top: 1px solid var(--border);

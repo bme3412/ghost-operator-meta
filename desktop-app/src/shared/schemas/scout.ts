@@ -10,7 +10,11 @@ export type ScoutLink = z.infer<typeof ScoutLink>
 export const ScoutFormField = z.object({
   name: z.string(),
   type: z.string(),
-  label: z.string().optional()
+  label: z.string().optional(),
+  /** Visible placeholder text, when the page provides one. */
+  placeholder: z.string().optional(),
+  /** Visible <select> option labels, capped by the snippet. */
+  options: z.array(z.string()).optional()
 })
 export type ScoutFormField = z.infer<typeof ScoutFormField>
 
@@ -27,6 +31,17 @@ export const ScoutButton = z.object({
 })
 export type ScoutButton = z.infer<typeof ScoutButton>
 
+/**
+ * Capped counts of repeated page structure: list items and card-like
+ * blocks. A rough "this page lists many similar things" signal for
+ * idea mining; older scans omit it.
+ */
+export const PageRepeats = z.object({
+  listItems: z.number(),
+  cards: z.number()
+})
+export type PageRepeats = z.infer<typeof PageRepeats>
+
 /** One crawled page: its path plus the extracted structure. */
 export const PageSummary = z.object({
   path: z.string().min(1),
@@ -34,7 +49,8 @@ export const PageSummary = z.object({
   headings: z.array(z.string()).default([]),
   links: z.array(ScoutLink).default([]),
   forms: z.array(ScoutForm).default([]),
-  buttons: z.array(ScoutButton).default([])
+  buttons: z.array(ScoutButton).default([]),
+  repeats: PageRepeats.optional()
 })
 export type PageSummary = z.infer<typeof PageSummary>
 

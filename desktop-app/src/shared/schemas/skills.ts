@@ -54,6 +54,12 @@ export const CompileRequest = z.object({
 })
 export type CompileRequest = z.infer<typeof CompileRequest>
 
+/** skills:script request: a canned fixture proposal for a starter task id. */
+export const ScriptRequest = z.object({
+  scriptedId: z.string().min(1)
+})
+export type ScriptRequest = z.infer<typeof ScriptRequest>
+
 export const CompileResult = z.union([
   z.object({ ok: z.literal(true), proposal: Proposal, providerId: ProviderId }),
   z.object({ ok: z.literal(false), errors: z.array(z.string()).min(1) })

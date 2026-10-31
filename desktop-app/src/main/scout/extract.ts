@@ -32,6 +32,9 @@ const MAX_NAME = 120
 const MAX_TYPE = 50
 const MAX_LABEL = 120
 const MAX_SEMID = 200
+const MAX_OPTIONS = 12
+const MAX_OPTION = 60
+const MAX_REPEAT_COUNT = 500
 
 /**
  * Origin lock for scout loads: the scan may only load its own site origin
@@ -43,9 +46,12 @@ export function isScoutNavigationAllowed(rawUrl: string, siteUrl: string): boole
 }
 
 /**
- * DOM extraction IIFE run in the scout window via executeJavaScript.
+ * DOM extraction IIFE run in the scout window via executeJavaScript (and in
+ * the live target window for page ideas, in an isolated world).
  * Self-contained (no page globals beyond document), truncates page-provided
  * strings, and skips password fields and submit controls as form fields.
+ * Fields also carry placeholders and select options; `repeats` counts
+ * list/card-like structure as a rough "many similar things" signal.
  */
 export function pageExtractSnippet(): string {
   return `(() => {
@@ -74,6 +80,13 @@ const forms = Array.prototype.slice.call(document.querySelectorAll('form'), 0, 5
     const out = { name: String(el.getAttribute('name') || el.getAttribute('id') || '').slice(0, 120), type: kind.slice(0, 50) };
     const label = labelFor(el, form);
     if (label) out.label = label;
+    const placeholder = el.getAttribute && el.getAttribute('placeholder');
+    if (placeholder) out.placeholder = clip(placeholder, 120);
+    if (tag === 'select' && el.options) {
+      const options = Array.prototype.slice.call(el.options, 0, 12)
+        .map((o) => clip(o.textContent, 60)).filter((o) => o.length > 0);
+      if (options.length > 0) out.options = options;
+    }
     return out;
   }).filter(Boolean);
   const submit = form.querySelector('button[type="submit"],input[type="submit"],button:not([type])');
@@ -89,7 +102,11 @@ const buttons = Array.prototype.slice.call(document.querySelectorAll('button,a[r
     if (semid) out.semid = String(semid).slice(0, 200);
     return out;
   }).filter((b) => b.label.length > 0 || b.semid);
-return { title: clip(document.title, 300), headings: headings, links: links, forms: forms, buttons: buttons };
+const repeats = {
+  listItems: Math.min(document.querySelectorAll('li').length, 500),
+  cards: Math.min(document.querySelectorAll('[class*="card"],[class*="tile"],[class*="listing"],[class*="-item"]').length, 500)
+};
+return { title: clip(document.title, 300), headings: headings, links: links, forms: forms, buttons: buttons, repeats: repeats };
 })()`
 }
 
@@ -103,6 +120,11 @@ function asString(value: unknown, max: number): string {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
+}
+
+function clampCount(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(MAX_REPEAT_COUNT, Math.floor(value)))
 }
 
 /**
@@ -128,13 +150,30 @@ export function normalizePageExtract(raw: unknown, path: string): PageSummaryTyp
         const name = asString(record.name, MAX_NAME)
         if (!name) return null
         const label = asString(record.label, MAX_LABEL)
+        const placeholder = asString(record.placeholder, MAX_LABEL)
+        const options = asArray(record.options)
+          .slice(0, MAX_OPTIONS)
+          .map((option) => asString(option, MAX_OPTION))
+          .filter((option) => option.length > 0)
         return {
           name,
           type: asString(record.type, MAX_TYPE) || 'text',
-          ...(label ? { label } : {})
+          ...(label ? { label } : {}),
+          ...(placeholder ? { placeholder } : {}),
+          ...(options.length > 0 ? { options } : {})
         }
       })
-      .filter((field): field is { name: string; type: string; label?: string } => field !== null)
+      .filter(
+        (
+          field
+        ): field is {
+          name: string
+          type: string
+          label?: string
+          placeholder?: string
+          options?: string[]
+        } => field !== null
+      )
     const action = asString(item.action, MAX_HREF)
     forms.push({
       ...(action ? { action } : {}),
@@ -150,6 +189,14 @@ export function normalizePageExtract(raw: unknown, path: string): PageSummaryTyp
     if (!label && !semid) continue
     buttons.push({ label, ...(semid ? { semid } : {}) })
   }
+  const repeatsRaw = asRecord(root.repeats)
+  const repeats =
+    typeof repeatsRaw.listItems === 'number' || typeof repeatsRaw.cards === 'number'
+      ? {
+          listItems: clampCount(repeatsRaw.listItems),
+          cards: clampCount(repeatsRaw.cards)
+        }
+      : undefined
   const candidate = {
     path,
     title: asString(root.title, MAX_TITLE),
@@ -159,7 +206,8 @@ export function normalizePageExtract(raw: unknown, path: string): PageSummaryTyp
       .filter((heading) => heading.length > 0),
     links,
     forms,
-    buttons
+    buttons,
+    ...(repeats ? { repeats } : {})
   }
   const parsed = PageSummary.safeParse(candidate)
   if (parsed.success) return parsed.data

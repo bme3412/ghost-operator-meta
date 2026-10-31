@@ -16,6 +16,8 @@ export const CHECK_WAIT_POLL_MS = 100
 export const FALLBACK_SETTLE_MS = 150
 /** Upper bound for a goto navigation to finish loading. */
 export const GOTO_LOAD_TIMEOUT_MS = 15000
+/** Upper bound for waiting on an action step's selector to exist before acting. */
+export const SELECTOR_READY_TIMEOUT_MS = 15000
 
 export function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -125,6 +127,32 @@ export async function waitForStepChecks(
       if (!(await checkReady(ref, inputs, dom))) return false
     }
     return true
+  }, opts)
+}
+
+/**
+ * Wait until any candidate selector answers a text probe (its element
+ * exists), up to a bounded timeout. Query errors — a navigation in flight
+ * tears down the JS context mid-poll — read as not-ready, so the wait rides
+ * through client-side navigations instead of failing on them. Returns true
+ * when ready, false on timeout.
+ */
+export async function waitForAnySelector(
+  selectors: string[],
+  dom: DomQuery,
+  opts?: PollOpts
+): Promise<boolean> {
+  if (selectors.length === 0) return true
+  return waitForCondition(async () => {
+    for (const selector of selectors) {
+      try {
+        if ((await dom.text(selector)) !== null) return true
+      } catch {
+        // Context gone mid-navigation (or an unparsable candidate): this
+        // candidate cannot answer yet; try the next one.
+      }
+    }
+    return false
   }, opts)
 }
 

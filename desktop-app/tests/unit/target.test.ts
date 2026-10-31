@@ -22,6 +22,7 @@ import {
   type SkillRecipe
 } from '../../src/shared/schemas'
 import {
+  SALTBREAK_STARTER_TASKS,
   normalizeTargetUrl,
   siteProfileForUrl,
   slugifyHostname
@@ -114,8 +115,30 @@ describe('site profiles', () => {
     expect(siteProfileForUrl(`${SALTBREAK_URL}/`, SALTBREAK_URL)).toEqual({
       id: 'saltbreak',
       name: 'Saltbreak',
-      url: SALTBREAK_URL
+      url: SALTBREAK_URL,
+      starterTasks: SALTBREAK_STARTER_TASKS
     })
+  })
+
+  it('folds a scheme-only variant of the Saltbreak host back to the configured URL', () => {
+    expect(siteProfileForUrl('https://localhost:3000', SALTBREAK_URL)).toEqual({
+      id: 'saltbreak',
+      name: 'Saltbreak',
+      url: SALTBREAK_URL,
+      starterTasks: SALTBREAK_STARTER_TASKS
+    })
+  })
+
+  it('leaves other hosts and ports on hostname-derived profiles', () => {
+    expect(siteProfileForUrl('https://www.ebay.com/', SALTBREAK_URL)).toEqual({
+      id: 'www-ebay-com',
+      name: 'www.ebay.com',
+      url: 'https://www.ebay.com'
+    })
+    expect(siteProfileForUrl('http://localhost:3001', SALTBREAK_URL).id).toBe('localhost')
+    expect(siteProfileForUrl('http://localhost:3001', SALTBREAK_URL).url).toBe(
+      'http://localhost:3001'
+    )
   })
 
   it('slugifies hostnames', () => {
@@ -131,7 +154,12 @@ describe('site profiles', () => {
   })
 
   it('defaults to the Saltbreak profile at the configured URL', () => {
-    expect(getTargetInfo()).toEqual({ id: 'saltbreak', name: 'Saltbreak', url: SALTBREAK_URL })
+    expect(getTargetInfo()).toEqual({
+      id: 'saltbreak',
+      name: 'Saltbreak',
+      url: SALTBREAK_URL,
+      starterTasks: SALTBREAK_STARTER_TASKS
+    })
     expect(resolveTargetUrl()).toBe(SALTBREAK_URL)
     process.env.TARGET_URL = 'http://localhost:4123'
     resetStoreCache()

@@ -47,21 +47,19 @@ export function clickSnippet(selector: string): string {
 
 /**
  * Fill action. Writes through the native value setter (so framework bindings
- * observe the change) and dispatches bubbling input + change events.
+ * observe the change) and dispatches bubbling input + change events. Selects
+ * use their own native setter: a plain assignment only updates React's value
+ * tracker, so a controlled select would swallow the change event.
  */
 export function fillSnippet(selector: string, value: string): string {
   return `(() => {
   const el = document.querySelector(${lit(selector)});
   if (!el || !('value' in el)) throw new Error('cannot fill ' + ${lit(selector)});
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
-    : el instanceof HTMLSelectElement ? null : HTMLInputElement.prototype;
-  if (proto) {
-    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    if (setter) setter.call(el, ${lit(value)});
-    else el.value = ${lit(value)};
-  } else {
-    el.value = ${lit(value)};
-  }
+    : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (setter) setter.call(el, ${lit(value)});
+  else el.value = ${lit(value)};
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 })()`

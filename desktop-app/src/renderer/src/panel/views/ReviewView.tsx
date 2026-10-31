@@ -9,10 +9,17 @@ type Phase = 'generating' | 'ready' | 'failed'
 
 export function ReviewView({
   onNav,
-  recordingId
+  recordingId,
+  scriptedId,
+  scriptName
 }: {
   onNav: OnNav
-  recordingId: string
+  /** Demonstrated flow: compile this recording. Mutually exclusive with scriptedId. */
+  recordingId?: string
+  /** Curated flow: load this canned fixture script instead of compiling. */
+  scriptedId?: string
+  /** Default skill name for the curated flow. */
+  scriptName?: string
 }): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('generating')
   const [proposal, setProposal] = useState<Proposal | null>(null)
@@ -30,6 +37,32 @@ export function ReviewView({
     setPhase('generating')
     setError(null)
     setProposal(null)
+    if (scriptedId) {
+      setProviderId('fixture')
+      window.ghost.skills
+        .script(scriptedId)
+        .then((result) => {
+          if (runToken.current !== token) return
+          if (!result.ok) {
+            setPhase('failed')
+            setError(result.errors.join('; '))
+            return
+          }
+          setProposal(result.proposal)
+          setPhase('ready')
+        })
+        .catch((err: unknown) => {
+          if (runToken.current !== token) return
+          setPhase('failed')
+          setError(friendlyError(err))
+        })
+      return
+    }
+    if (!recordingId) {
+      setPhase('failed')
+      setError('Nothing to review.')
+      return
+    }
     window.ghost.providers
       .getDefault()
       .then((provider) => {
@@ -55,10 +88,17 @@ export function ReviewView({
   }
 
   // The draft generates automatically on entry, using the default provider.
+  // The curated flow names the skill from the starter task instead.
   useEffect(() => {
-    if (startedFor.current === recordingId) return
-    startedFor.current = recordingId
+    const key = scriptedId ?? recordingId ?? ''
+    if (startedFor.current === key) return
+    startedFor.current = key
     generate()
+    if (scriptedId) {
+      setSkillName(scriptName ?? '')
+      return
+    }
+    if (!recordingId) return
     const token = runToken.current
     window.ghost.recordings
       .get(recordingId)
@@ -67,7 +107,7 @@ export function ReviewView({
       })
       .catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordingId])
+  }, [recordingId, scriptedId])
 
   const save = (publish: boolean): void => {
     if (!proposal || skillName.trim() === '') {
@@ -80,7 +120,7 @@ export function ReviewView({
       .saveDraft({
         name: skillName.trim(),
         recipe: proposal.recipe,
-        recordingIds: [recordingId],
+        recordingIds: recordingId ? [recordingId] : [],
         providerId,
         unresolved: proposal.unresolved
       })
@@ -112,7 +152,7 @@ export function ReviewView({
       <section className="card" aria-label="Learned procedure">
         {phase === 'generating' && (
           <p className="muted" role="status" data-testid="review-generating">
-            Learning the procedure from your demonstration…
+            {scriptedId ? 'Loading the curated script…' : 'Learning the procedure from your demonstration…'}
           </p>
         )}
         {phase === 'failed' && (

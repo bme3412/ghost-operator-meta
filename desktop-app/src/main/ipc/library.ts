@@ -5,9 +5,12 @@ import {
   CompileRequest,
   PublishRequest,
   SaveDraftRequest,
-  UpdateDraftRequest
+  ScriptRequest,
+  UpdateDraftRequest,
+  type CompileResult
 } from '../../shared/schemas'
 import { compileRecording } from '../compiler'
+import { scriptedProposal } from '../providers/fixture'
 import { screenshotPathForRef } from '../recorder/service'
 import { getSkill, listSkills, publishSkill, saveDraft, updateDraft } from '../skills'
 import { loadState } from '../store'
@@ -68,6 +71,16 @@ export function registerLibraryHandlers(): void {
     assertSenderRole(event, CHANNELS.skillsCompile, APP_ROLES)
     const request = CompileRequest.parse(payload)
     return compileRecording(request)
+  })
+
+  ipcMain.handle(CHANNELS.skillsScript, (event: IpcMainInvokeEvent, payload: unknown) => {
+    assertSenderRole(event, CHANNELS.skillsScript, APP_ROLES)
+    const { scriptedId } = ScriptRequest.parse(payload)
+    const proposal = scriptedProposal(scriptedId)
+    const result: CompileResult = proposal
+      ? { ok: true, proposal, providerId: 'fixture' }
+      : { ok: false, errors: [`No scripted proposal for "${scriptedId}".`] }
+    return result
   })
 
   ipcMain.handle(CHANNELS.skillsSaveDraft, (event: IpcMainInvokeEvent, payload: unknown) => {

@@ -11,6 +11,7 @@ export interface TargetInfo {
   id: string
   name: string
   url: string
+  starterTasks?: StarterTask[]
 }
 
 /**
@@ -22,6 +23,7 @@ export interface SiteProfile {
   id: string
   name: string
   url: string
+  starterTasks?: StarterTask[]
 }
 
 /**
@@ -32,13 +34,62 @@ export interface TargetStatus {
   id: string
   name: string
   url: string
+  starterTasks?: StarterTask[]
   reachable: boolean
   checkedAt: string
 }
 
+/** Who a starter task is for. Owner tasks live under /staff/*, shopper tasks on the storefront. */
+export type StarterAudience = 'owner' | 'shopper'
+
+/**
+ * A curated tap-to-run demo task. `id` keys the canned fixture proposal;
+ * `exampleInputs` prefill the run inputs (first input to demonstrate on);
+ * `startPath` is where the run begins.
+ */
+export interface StarterTask {
+  id: string
+  audience: StarterAudience
+  title: string
+  exampleInputs: Record<string, string>
+  startPath: string
+}
+
+/** Curated Saltbreak demo tasks: tap a card, review the script, run it, run it again. */
+export const SALTBREAK_STARTER_TASKS: StarterTask[] = [
+  {
+    id: 'reconcile-payout',
+    audience: 'owner',
+    title: 'Reconcile payout PO-1043 in Books',
+    exampleInputs: { payoutId: 'PO-1043' },
+    startPath: '/staff/payments'
+  },
+  {
+    id: 'answer-ticket',
+    audience: 'owner',
+    title: 'Answer ticket T-101 from product facts',
+    exampleInputs: { ticketId: 'T-101' },
+    startPath: '/staff/inbox'
+  },
+  {
+    id: 'shop-under-budget',
+    audience: 'shopper',
+    title: 'Find an in-stock beginner board under $500 and add it to the cart',
+    exampleInputs: { maxDollars: '500' },
+    startPath: '/shop'
+  },
+  {
+    id: 'report-order-charge',
+    audience: 'shopper',
+    title: 'Report a duplicate charge on order SB-8014',
+    exampleInputs: { orderId: 'SB-8014', reason: 'Charged twice' },
+    startPath: '/order/SB-8014'
+  }
+]
+
 /** The default site profile: Saltbreak at the configured target URL. */
 export function saltbreakProfile(url: string): SiteProfile {
-  return { id: TARGET.id, name: TARGET.name, url }
+  return { id: TARGET.id, name: TARGET.name, url, starterTasks: SALTBREAK_STARTER_TASKS }
 }
 
 /** Slugify an origin hostname into a site id ("EBay.COM" -> "ebay-com"). */
@@ -73,13 +124,41 @@ export function normalizeTargetUrl(rawUrl: string): string {
 /**
  * Build the site profile for a target URL. The configured Saltbreak URL
  * keeps the Saltbreak profile (so the deterministic Saltbreak path is
- * unchanged); every other origin derives its id from its hostname.
+ * unchanged); every other origin derives its id from its hostname. A URL
+ * that matches the configured Saltbreak host and port but differs only by
+ * scheme (e.g. a mistyped https://localhost:3000) folds back to the
+ * configured URL — the local server speaks plain HTTP, and anything else
+ * would strand the target on a failing TLS handshake.
  */
 export function siteProfileForUrl(rawUrl: string, saltbreakUrl?: string): SiteProfile {
   const url = normalizeTargetUrl(rawUrl)
-  if (saltbreakUrl !== undefined && url === saltbreakUrl.replace(/\/$/, '')) {
-    return saltbreakProfile(url)
+  if (saltbreakUrl !== undefined) {
+    const configured = saltbreakUrl.replace(/\/$/, '')
+    if (url === configured) {
+      return saltbreakProfile(url)
+    }
+    if (sameHostAndPort(url, configured)) {
+      return saltbreakProfile(configured)
+    }
   }
   const hostname = new URL(url).hostname
   return { id: slugifyHostname(hostname), name: hostname, url }
+}
+
+/** True when both URLs share a hostname and effective port. Never throws. */
+function sameHostAndPort(a: string, b: string): boolean {
+  try {
+    const x = new URL(a)
+    const y = new URL(b)
+    if (x.hostname.toLowerCase() !== y.hostname.toLowerCase()) return false
+    return effectivePort(x) === effectivePort(y)
+  } catch {
+    return false
+  }
+}
+
+/** Explicit port, or the scheme default when implicit. */
+function effectivePort(url: URL): string {
+  if (url.port !== '') return url.port
+  return url.protocol === 'https:' ? '443' : '80'
 }

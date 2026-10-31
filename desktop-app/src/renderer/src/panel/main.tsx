@@ -157,11 +157,15 @@ function PanelApp(): React.JSX.Element {
       <div className="panel-body">
         <ErrorBoundary>
         {nav.view === 'home' && <HomeView onNav={onNav} recorder={recorder} progress={progress} />}
-        {nav.view === 'teach' && <TeachView onNav={onNav} initialGoal={nav.goal ?? ''} />}
+        {nav.view === 'teach' && (
+          <TeachView onNav={onNav} initialGoal={nav.goal ?? ''} initialExample={nav.example ?? ''} />
+        )}
         {nav.view === 'recording' && <RecordingView push={recorder} />}
         {nav.view === 'review' &&
           (nav.recordingId ? (
             <ReviewView onNav={onNav} recordingId={nav.recordingId} />
+          ) : nav.scriptedId ? (
+            <ReviewView onNav={onNav} scriptedId={nav.scriptedId} scriptName={nav.scriptName} />
           ) : (
             <HomeView onNav={onNav} recorder={recorder} progress={progress} />
           ))}

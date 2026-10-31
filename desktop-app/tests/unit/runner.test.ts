@@ -80,6 +80,8 @@ function harness(overrides?: {
   checkWait?: { timeoutMs?: number; pollMs?: number }
 }) {
   const texts: Record<string, string> = {
+    '[data-semid="ticket-resolve-T-101"]': 'resolved',
+    '[data-semid="ticket-resolve-T-102"]': 'resolved',
     '[data-semid="ticket-status-T-101"]': 'open',
     '[data-semid="ticket-status-T-102"]': 'pending'
   }
@@ -140,6 +142,7 @@ function harness(overrides?: {
     sleep: async (ms) => {
       sleepCalls.push(ms)
     },
+    readyWait: { timeoutMs: 30, pollMs: 1 },
     ...(overrides?.checkWait ? { checkWait: overrides.checkWait } : {})
   })
   return {

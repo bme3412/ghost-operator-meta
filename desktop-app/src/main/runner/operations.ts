@@ -1,6 +1,7 @@
 import type { SkillStep } from '../../shared/schemas'
 import { formatAttemptAction, orderedAttemptSelectors } from '../../shared/capture/selectors'
-import { resolvePlaceholders, resolveSelectorPlaceholders } from './checks'
+import { resolvePlaceholders, resolveSelectorPlaceholders, type DomQuery } from './checks'
+import { SELECTOR_READY_TIMEOUT_MS, waitForAnySelector, type PollOpts } from './wait'
 
 /** Actions the runner can perform in the target page. Each throws on failure. */
 export interface DomAct {
@@ -12,6 +13,14 @@ export interface DomAct {
 
 export interface OperationDeps {
   act: DomAct
+  /**
+   * Read-only page queries. When present, click/fill/submit steps wait for
+   * a candidate selector to exist before acting once — a click that lands a
+   * client-side navigation no longer races the next step's action.
+   */
+  query?: DomQuery
+  /** Poll budget overrides for the pre-action readiness wait (tests only). */
+  readyWait?: PollOpts
 }
 
 export interface OperationOutcome {
@@ -92,6 +101,30 @@ async function attemptInOrder(
 }
 
 /**
+ * Wait for an action step's target to exist before acting once. The wait is
+ * read-only, so the action itself still runs exactly once; a timeout fails
+ * honestly instead of racing a navigation in flight.
+ */
+async function awaitSelectorReady(
+  stepId: string,
+  selectors: string[],
+  deps: OperationDeps
+): Promise<void> {
+  if (!deps.query || selectors.length === 0) return
+  const timeoutMs = deps.readyWait?.timeoutMs ?? SELECTOR_READY_TIMEOUT_MS
+  const ready = await waitForAnySelector(selectors, deps.query, {
+    ...deps.readyWait,
+    timeoutMs
+  })
+  if (!ready) {
+    const target = selectors.length === 1 ? selectors[0] : `${selectors.length} selector(s)`
+    throw new Error(
+      `Step "${stepId}" target missing: no match for ${target} within ${timeoutMs / 1000}s.`
+    )
+  }
+}
+
+/**
  * Execute an assisted computer_task step in the target page through real DOM
  * interactions. Unknown actions fail the run instead of guessing.
  */
@@ -106,6 +139,7 @@ export async function executeComputerTask(
     case 'click': {
       if (!resolved['selector']) throw new Error(`Step "${step.id}" has no selector.`)
       const selectors = attemptSelectorsForStep(step, inputs)
+      await awaitSelectorReady(step.id, selectors, deps)
       const { matched, index } = await attemptInOrder(step.id, selectors, (s) =>
         deps.act.click(s)
       )
@@ -119,6 +153,7 @@ export async function executeComputerTask(
       if (!resolved['selector']) throw new Error(`Step "${step.id}" has no selector.`)
       if (resolved['value'] === undefined) throw new Error(`Step "${step.id}" has no value.`)
       const selectors = attemptSelectorsForStep(step, inputs)
+      await awaitSelectorReady(step.id, selectors, deps)
       const { matched, index } = await attemptInOrder(step.id, selectors, (s) =>
         deps.act.fill(s, resolved['value'] as string)
       )
@@ -131,6 +166,7 @@ export async function executeComputerTask(
     case 'submit': {
       if (!resolved['selector']) throw new Error(`Step "${step.id}" has no selector.`)
       const selectors = attemptSelectorsForStep(step, inputs)
+      await awaitSelectorReady(step.id, selectors, deps)
       const { matched, index } = await attemptInOrder(step.id, selectors, (s) =>
         deps.act.submit(s)
       )

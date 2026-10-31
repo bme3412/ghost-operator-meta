@@ -22,10 +22,19 @@ const LegacyState = z.object({
  * switched sites, in which case readers fall back to the Saltbreak profile
  * at the configured target URL.
  */
+export const StarterTaskSchema = z.object({
+  id: z.string().min(1),
+  audience: z.enum(['owner', 'shopper']),
+  title: z.string().min(1),
+  exampleInputs: z.record(z.string(), z.string()),
+  startPath: z.string().min(1)
+})
+
 export const SiteProfile = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  url: z.string().min(1)
+  url: z.string().min(1),
+  starterTasks: z.array(StarterTaskSchema).optional()
 })
 export type SiteProfile = z.infer<typeof SiteProfile>
 

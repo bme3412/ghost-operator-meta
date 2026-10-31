@@ -22,7 +22,13 @@ export function resolveTargetUrl(env: NodeJS.ProcessEnv = process.env): string {
 /** Live target site profile: the stored site, or Saltbreak by default. */
 export function getTargetInfo(env: NodeJS.ProcessEnv = process.env): SiteProfile {
   const stored = loadState().currentSite
-  if (stored) return { ...stored }
+  // Stored Saltbreak profiles predate starter tasks; re-attach them live so
+  // persisted state never needs a migration for curated content.
+  if (stored) {
+    return stored.id === TARGET.id
+      ? { ...stored, starterTasks: saltbreakProfile(stored.url).starterTasks }
+      : { ...stored }
+  }
   return saltbreakProfile(envTargetUrl(env))
 }
 

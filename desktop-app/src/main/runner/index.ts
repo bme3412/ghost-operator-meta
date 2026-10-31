@@ -37,6 +37,8 @@ export interface RunnerDeps {
   sleep?: (ms: number) => Promise<void>
   /** Override the bounded check-wait budget; defaults live in ./wait. */
   checkWait?: { timeoutMs?: number; pollMs?: number }
+  /** Override the bounded pre-action readiness budget; defaults live in ./wait. */
+  readyWait?: { timeoutMs?: number; pollMs?: number }
 }
 
 interface ActiveRun {
@@ -230,7 +232,15 @@ export function createRunner(deps: RunnerDeps): {
     let actions: string[]
     let observed: string
     if (step.kind === 'computer_task') {
-      const outcome = await executeComputerTask(step, run.record.inputs, { act: deps.domAct })
+      const outcome = await executeComputerTask(step, run.record.inputs, {
+        act: deps.domAct,
+        query: deps.domQuery,
+        readyWait: {
+          timeoutMs: deps.readyWait?.timeoutMs,
+          pollMs: deps.readyWait?.pollMs,
+          sleep: deps.sleep
+        }
+      })
       actions = outcome.actions
       observed = outcome.observed
       deps.highlight(outcome.highlight)

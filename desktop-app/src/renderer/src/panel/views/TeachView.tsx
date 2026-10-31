@@ -1,25 +1,78 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { PageIdea, PageIdeasResult } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
 import { friendlyError } from '../../lib/errors'
 import type { OnNav } from '../nav'
+import { PageIdeas } from '../PageIdeas'
 
 export function TeachView({
   onNav,
-  initialGoal
+  initialGoal,
+  initialExample
 }: {
   onNav: OnNav
   initialGoal: string
+  initialExample: string
 }): React.JSX.Element {
   const [goal, setGoal] = useState(initialGoal)
-  const [caseInput, setCaseInput] = useState('')
+  const [caseInput, setCaseInput] = useState(initialExample)
+  const [selected, setSelected] = useState<{ id: string; title: string } | null>(null)
   const [goalHint, setGoalHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [siteId, setSiteId] = useState<string | null>(null)
+  const [topIdea, setTopIdea] = useState<PageIdea | null>(null)
+  const goalRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    window.ghost.target
+      .getInfo()
+      .then((info) => setSiteId(info.id))
+      .catch(() => undefined)
+  }, [])
+
+  const saltbreak = siteId === 'saltbreak'
+  const goalPlaceholder = saltbreak
+    ? 'e.g. Resolve support ticket T-101'
+    : topIdea
+      ? `e.g. ${topIdea.title}`
+      : 'e.g. Search the store and collect the top results'
+  const casePlaceholder = saltbreak
+    ? 'e.g. T-101'
+    : topIdea?.exampleInput
+      ? `e.g. ${topIdea.exampleInput}`
+      : 'e.g. An example to demonstrate on'
+  const emptyGoalHint = saltbreak
+    ? 'Describe the goal — e.g. Resolve support ticket T-101.'
+    : topIdea
+      ? `Describe the goal — e.g. ${topIdea.title}.`
+      : 'Describe the goal.'
+
+  const teachIdea = (idea: PageIdea): void => {
+    setGoal(idea.title)
+    setCaseInput(idea.exampleInput ?? '')
+    setSelected({ id: idea.id, title: idea.title })
+    setGoalHint(null)
+    // The form sits below the ideas: bring the prefilled goal into view so
+    // the click visibly lands.
+    goalRef.current?.scrollIntoView({ block: 'nearest' })
+    goalRef.current?.focus({ preventScroll: true })
+  }
+
+  const handleGoalChange = (value: string): void => {
+    setGoal(value)
+    if (selected !== null && value !== selected.title) setSelected(null)
+    if (goalHint !== null) setGoalHint(null)
+  }
+
+  const handleResult = (result: PageIdeasResult | null): void => {
+    setTopIdea(result?.ideas[0] ?? null)
+  }
 
   const start = (): void => {
     const trimmedGoal = goal.trim()
     if (!trimmedGoal) {
-      setGoalHint('Describe the goal — e.g. Resolve support ticket T-101.')
+      setGoalHint(emptyGoalHint)
       return
     }
     setBusy(true)
@@ -37,7 +90,14 @@ export function TeachView({
   return (
     <div>
       <section className="card" aria-label="Teach a task">
-        <h2>What should Ghost learn?</h2>
+        <PageIdeas
+          bare
+          hint="Pick one, or write your own below."
+          selectedId={selected?.id ?? null}
+          onTeach={teachIdea}
+          onResult={handleResult}
+          onStarter={(task) => onNav({ view: 'review', scriptedId: task.id, scriptName: task.title })}
+        />
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -46,19 +106,17 @@ export function TeachView({
         >
           <div className="teach-field">
             <label htmlFor="teach-goal">Goal</label>
-            <input
+            <textarea
               id="teach-goal"
+              ref={goalRef}
               className="teach-input"
               data-testid="teach-goal"
               data-semid="teach-goal"
-              type="text"
+              rows={2}
               autoFocus
               value={goal}
-              onChange={(event) => {
-                setGoal(event.target.value)
-                if (goalHint !== null) setGoalHint(null)
-              }}
-              placeholder="e.g. Resolve support ticket T-101"
+              onChange={(event) => handleGoalChange(event.target.value)}
+              placeholder={goalPlaceholder}
             />
             {goalHint !== null && (
               <p className="teach-hint" role="alert" data-testid="teach-goal-hint">
@@ -66,31 +124,31 @@ export function TeachView({
               </p>
             )}
           </div>
-          <details className="disclosure">
-            <summary>More options</summary>
-            <div className="teach-field">
-              <label htmlFor="teach-case">Example record (optional)</label>
-              <input
-                id="teach-case"
-                className="teach-input"
-                data-testid="teach-case"
-                data-semid="teach-case"
-                type="text"
-                value={caseInput}
-                onChange={(event) => setCaseInput(event.target.value)}
-                placeholder="e.g. T-101"
-              />
-              <p className="muted">
-                The record you demonstrate on. Ghost learns to ask for a different one on each
-                run.
-              </p>
-            </div>
-          </details>
+          <div className="teach-field">
+            <label htmlFor="teach-case">Example to try (optional)</label>
+            <input
+              id="teach-case"
+              className="teach-input"
+              data-testid="teach-case"
+              data-semid="teach-case"
+              type="text"
+              value={caseInput}
+              onChange={(event) => setCaseInput(event.target.value)}
+              placeholder={casePlaceholder}
+            />
+            <p className="muted">
+              What you demonstrate on. Next time you run this, Ghost asks for a different one.
+            </p>
+          </div>
           {error !== null && (
             <p className="alert-error" role="alert">
               {error}
             </p>
           )}
+          <p className="muted">
+            You’ll do this once in the website. Ghost records the clicks. You can add a note while
+            recording.
+          </p>
           <div className="field">
             <Button
               variant="primary"
@@ -99,7 +157,7 @@ export function TeachView({
               type="submit"
               disabled={busy}
             >
-              {busy ? 'Starting…' : 'Start demonstrating'}
+              {busy ? 'Starting…' : 'Start recording'}
             </Button>
             <Button data-testid="teach-cancel" type="button" onClick={() => onNav({ view: 'home' })}>
               Cancel
@@ -107,10 +165,6 @@ export function TeachView({
           </div>
         </form>
       </section>
-      <p className="muted">
-        Ghost records your clicks and typing in the website. Demonstrate the task once, add a
-        note where you make a judgment call, then finish.
-      </p>
     </div>
   )
 }

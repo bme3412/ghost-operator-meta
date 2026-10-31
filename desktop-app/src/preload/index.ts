@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   CompileResult,
+  PageIdeasResult,
   PanelNavigateParams,
   ProviderId,
   PublishRequest,
@@ -18,7 +19,9 @@ import type {
   StartRunRequest,
   Suggestion,
   SuggestAcceptPrefill,
+  SuggestPageRequest,
   SuggestPolishResult,
+  TargetPagePush,
   UpdateDraftRequest
 } from '../shared/schemas'
 import type { TargetInfo, TargetStatus } from '../shared/target'
@@ -48,7 +51,9 @@ const api = {
     getInfo: (): Promise<TargetInfo> => ipcRenderer.invoke('target:get-info'),
     setUrl: (url: string): Promise<TargetInfo> => ipcRenderer.invoke('target:set-url', { url }),
     getStatus: (): Promise<TargetStatus> => ipcRenderer.invoke('target:get-status'),
-    show: (): Promise<void> => ipcRenderer.invoke('target:show')
+    show: (): Promise<void> => ipcRenderer.invoke('target:show'),
+    onPageChanged: (listener: (page: TargetPagePush) => void): (() => void) =>
+      onPayload<TargetPagePush>('ghost:target-page', listener)
   },
   panel: {
     setLayout: (layout: 'docked' | 'expanded'): Promise<void> =>
@@ -87,7 +92,9 @@ const api = {
     dismiss: (id: string): Promise<Suggestion> =>
       ipcRenderer.invoke('suggest:dismiss', { id }),
     accept: (id: string): Promise<SuggestAcceptPrefill> =>
-      ipcRenderer.invoke('suggest:accept', { id })
+      ipcRenderer.invoke('suggest:accept', { id }),
+    forPage: (options?: SuggestPageRequest): Promise<PageIdeasResult> =>
+      ipcRenderer.invoke('suggest:page', { ...options })
   },
   scout: {
     start: (siteId?: string): Promise<ScoutStatus> =>
@@ -108,6 +115,8 @@ const api = {
     get: (id: string): Promise<Skill | null> => ipcRenderer.invoke('skills:get', { id }),
     compile: (recordingId: string, providerId: ProviderId): Promise<CompileResult> =>
       ipcRenderer.invoke('skills:compile', { recordingId, providerId }),
+    script: (scriptedId: string): Promise<CompileResult> =>
+      ipcRenderer.invoke('skills:script', { scriptedId }),
     saveDraft: (request: SaveDraftRequest): Promise<Skill> =>
       ipcRenderer.invoke('skills:save-draft', request),
     updateDraft: (request: UpdateDraftRequest): Promise<Skill> =>

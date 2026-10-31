@@ -1,5 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { inPageNavigateToEmit, pathnameOfHttpUrl } from '../../shared/capture/navigate'
+import { sendToRoles } from '../ipc/broadcast'
+import { EVENTS } from '../ipc/channels'
 import { getRecorder } from '../recorder/service'
 import { getTargetInfo, setTargetUrl } from '../target'
 import { applyTargetGuards, isHttpsUpgrade, isTargetNavigationAllowed } from './guards'
@@ -99,10 +101,28 @@ export function createTargetWindow(placement?: {
   // The tracker syncs to every committed full navigation (did-navigate fires
   // at commit, before load and hydration), so a hydration-level replaceState
   // to the current path always reads as "no movement" at any Teach timing.
+  // Tell the panel which page is showing so its contextual ideas can
+  // re-fetch. Debounced: a full load emits did-navigate and did-finish-load
+  // back to back, and only the settled page matters. Panel only — the push
+  // carries the browsing location, which scanned pages must not observe.
+  let pagePushTimer: NodeJS.Timeout | null = null
+  const pushTargetPage = (): void => {
+    if (pagePushTimer) clearTimeout(pagePushTimer)
+    pagePushTimer = setTimeout(() => {
+      pagePushTimer = null
+      if (window.isDestroyed()) return
+      sendToRoles(['panel'], EVENTS.targetPage, {
+        url: window.webContents.getURL(),
+        title: window.webContents.getTitle()
+      })
+    }, 800)
+  }
+
   let lastInPagePath: string | null = null
   window.webContents.on('did-navigate', (_event, url) => {
     const current = pathnameOfHttpUrl(url)
     if (current) lastInPagePath = current
+    pushTargetPage()
   })
   window.webContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
     const emit = inPageNavigateToEmit(lastInPagePath, url, isMainFrame)
@@ -111,7 +131,9 @@ export function createTargetWindow(placement?: {
     void getRecorder()
       .appendEvents([{ type: 'navigate', value: emit, atMs: Date.now() }])
       .catch(() => undefined)
+    if (isMainFrame) pushTargetPage()
   })
+  window.webContents.on('did-finish-load', () => pushTargetPage())
 
   window.loadURL(url).catch(() => {
     // An in-flight https upgrade supersedes this failure: its own fresh

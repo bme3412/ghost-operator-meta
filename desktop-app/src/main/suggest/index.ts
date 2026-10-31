@@ -16,6 +16,15 @@ import { suggestionIdFor } from './mine'
 
 export { mineRecording, suggestionIdFor } from './mine'
 export { mineSiteMap } from './sitemap'
+export {
+  clearPageIdeasCache,
+  getPageIdeas,
+  minePage,
+  readCurrentPage,
+  type CurrentPage,
+  type PageIdeasInput,
+  type PageIdeasOptions
+} from './page'
 
 function all(): Suggestion[] {
   return loadState().suggestions ?? []
