@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Recording, RecorderStatePush } from '../../shared/schemas'
@@ -7,6 +7,7 @@ import { appendMinedSuggestions } from '../suggest'
 import { mineRecording } from '../suggest/mine'
 import { getTargetInfo } from '../target'
 import { getWindow } from '../windows/registry'
+import { sendToRoles } from '../ipc/broadcast'
 import { EVENTS } from '../ipc/channels'
 import { createRecorder, type Recorder } from './index'
 
@@ -49,9 +50,9 @@ function persistRecording(recording: Recording): void {
 }
 
 function broadcast(push: RecorderStatePush): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send(EVENTS.recordingState, push)
-  }
+  // The target capture layer and the panel router need state; the hidden
+  // scout window must not observe the recording goal or case id.
+  sendToRoles(['target', 'panel'], EVENTS.recordingState, push)
 }
 
 let singleton: Recorder | null = null

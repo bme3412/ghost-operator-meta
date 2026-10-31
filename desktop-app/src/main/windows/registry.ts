@@ -1,7 +1,8 @@
 import type { BrowserWindow, WebContents } from 'electron'
+import type { PanelNavigateParams } from '../../shared/schemas'
 import { EVENTS } from '../ipc/channels'
 
-export type WindowRole = 'target' | 'toolbar' | 'sidecar' | 'studio'
+export type WindowRole = 'target' | 'panel'
 
 const windows = new Map<WindowRole, BrowserWindow>()
 
@@ -30,28 +31,22 @@ export function roleForWebContents(sender: WebContents): WindowRole | undefined 
   return undefined
 }
 
-/** Open the studio on a finished recording. Called when a recording finishes. */
-export function openStudioForRecording(recordingId: string): void {
-  const studio = getWindow('studio')
-  if (!studio) return
-  studio.show()
-  studio.focus()
-  studio.webContents.send(EVENTS.studioShow, { section: 'recordings', recordingId })
+/**
+ * Move the panel to a view. The single entry point for main-initiated
+ * navigation (recording finished, run started, suggestion accepted).
+ */
+export function navigatePanel(params: PanelNavigateParams): void {
+  const panel = getWindow('panel')
+  if (!panel) return
+  panel.show()
+  panel.focus()
+  panel.webContents.send(EVENTS.panelNavigate, params)
 }
 
-/** Open the studio on a finished run. */
-export function openStudioForRun(runId: string): void {
-  const studio = getWindow('studio')
-  if (!studio) return
-  studio.show()
-  studio.focus()
-  studio.webContents.send(EVENTS.studioShow, { section: 'runs', runId })
-}
-
-/** Return focus to the sidecar when the user starts reusing a skill. */
-export function focusSidecar(): void {
-  const sidecar = getWindow('sidecar')
-  if (!sidecar) return
-  sidecar.show()
-  sidecar.focus()
+/** Bring the target window forward. */
+export function showTarget(): void {
+  const target = getWindow('target')
+  if (!target) return
+  target.show()
+  target.focus()
 }

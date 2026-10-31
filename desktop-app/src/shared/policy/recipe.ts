@@ -21,6 +21,9 @@ export function validateRecipe(recipe: SkillRecipe, scopeId: string = TARGET.id)
         errors.push(`Step "${step.id}" uses unregistered tool "${step.toolId}".`)
       }
     }
+    if (step.kind === 'verify' && step.checks.length === 0) {
+      errors.push(`Step "${step.id}" is a verify step without checks.`)
+    }
     if (step.kind === 'computer_task') {
       const action = step.bindings['action']
       if (!action || !DOM_ACTIONS.has(action)) {
@@ -29,6 +32,10 @@ export function validateRecipe(recipe: SkillRecipe, scopeId: string = TARGET.id)
         )
       } else if (action === 'goto' && !step.bindings['value']) {
         errors.push(`Step "${step.id}" is a goto step without bindings.value (path).`)
+      } else if (action === 'goto' && /^https?:\/\//i.test(step.bindings['value'] ?? '')) {
+        errors.push(
+          `Step "${step.id}" is a goto step with an absolute URL; use a site-relative path.`
+        )
       } else if (action !== 'goto' && !step.bindings['selector']) {
         errors.push(`Step "${step.id}" needs bindings.selector for action "${action}".`)
       }
@@ -53,7 +60,7 @@ export function validateRecipe(recipe: SkillRecipe, scopeId: string = TARGET.id)
   return errors
 }
 
-/** Heading of every recipe-validation failure message. The Studio UI parses it back into a list. */
+/** Heading of every recipe-validation failure message. The Library UI parses it back into a list. */
 export const RECIPE_ERROR_PREFIX = 'Recipe is invalid:'
 
 export function formatRecipeErrorMessage(errors: string[]): string {

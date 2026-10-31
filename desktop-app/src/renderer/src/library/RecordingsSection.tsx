@@ -5,6 +5,8 @@ import { countReviewItems } from '../../../shared/skills/review'
 import { TARGET } from '../../../shared/target'
 import type { RecordingSummary } from '../../../shared/schemas'
 import { Button } from '../components/Button'
+import { friendlyError } from '../lib/errors'
+import { bindingSentences, stepLabel } from '../lib/humanize'
 import { Screenshot } from './Screenshot'
 
 export function RecordingsSection({
@@ -20,7 +22,8 @@ export function RecordingsSection({
   const [providerId, setProviderId] = useState<ProviderId>('fixture')
   const providerTouched = useRef(false)
   const [compile, setCompile] = useState<CompileResult | null>(null)
-  const [skillName, setSkillName] = useState('Resolve support ticket')
+  const [skillName, setSkillName] = useState('')
+  const namedFor = useRef<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [recipeErrors, setRecipeErrors] = useState<string[] | null>(null)
@@ -29,7 +32,7 @@ export function RecordingsSection({
     window.ghost.recordings
       .list()
       .then(setSummaries)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [])
 
   useEffect(() => {
@@ -55,8 +58,17 @@ export function RecordingsSection({
     window.ghost.recordings
       .get(selectedId)
       .then(setDetail)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [selectedId])
+
+  // Prefill the skill name from the recording goal (once per recording so
+  // user edits are never clobbered).
+  useEffect(() => {
+    if (detail && namedFor.current !== detail.id) {
+      namedFor.current = detail.id
+      setSkillName(detail.goal)
+    }
+  }, [detail])
 
   const generate = (): void => {
     if (!selectedId) return
@@ -65,7 +77,7 @@ export function RecordingsSection({
     window.ghost.skills
       .compile(selectedId, providerId)
       .then(setCompile)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
       .finally(() => setBusy(false))
   }
 
@@ -91,16 +103,18 @@ export function RecordingsSection({
         if (list) {
           setRecipeErrors(list)
         } else {
-          setError(String(err))
+          setError(friendlyError(err))
         }
       })
       .finally(() => setBusy(false))
   }
 
   return (
-    <div className="studio-split">
-      <div className="studio-list" role="listbox" aria-label="Recordings">
-        {summaries.length === 0 && <p className="muted">No recordings yet. Click Teach.</p>}
+    <div className="library-split">
+      <div className="library-list" role="listbox" aria-label="Recordings">
+        {summaries.length === 0 && (
+          <p className="muted">No recordings yet. Teach a task from Home to create one.</p>
+        )}
         {summaries.map((summary) => (
           <button
             key={summary.id}
@@ -118,7 +132,7 @@ export function RecordingsSection({
           </button>
         ))}
       </div>
-      <div className="studio-detail">
+      <div className="library-detail">
         {error !== null && (
           <p className="alert-error" role="alert">
             {error}
@@ -150,8 +164,28 @@ export function RecordingsSection({
                 </ul>
               </section>
             )}
-            <section aria-label="Events">
-              <h3>Events</h3>
+            <details className="advanced">
+              <summary>Advanced: provider and raw events</summary>
+              <div className="field">
+                <label htmlFor="provider">Provider</label>
+                <select
+                  id="provider"
+                  data-semid="compile-provider"
+                  value={providerId}
+                  onChange={(event) => {
+                    providerTouched.current = true
+                    setProviderId(event.target.value as ProviderId)
+                  }}
+                >
+                  <option value="fixture">Fixture (offline, deterministic)</option>
+                  <option value="meta">Meta (requires MODEL_API_KEY)</option>
+                </select>
+                {providerId === 'fixture' && detail.applicationScope !== TARGET.id && (
+                  <p className="muted" data-semid="fixture-site-hint">
+                    Fixture is tuned for Saltbreak; set MODEL_API_KEY for general sites.
+                  </p>
+                )}
+              </div>
               <table className="cases-table" data-semid="recording-events">
                 <thead>
                   <tr>
@@ -180,28 +214,10 @@ export function RecordingsSection({
                   ))}
                 </tbody>
               </table>
-            </section>
+            </details>
             <section aria-label="Generate procedure" className="card">
               <h3>Draft procedure</h3>
               <div className="field">
-                <label htmlFor="provider">Provider</label>
-                <select
-                  id="provider"
-                  data-semid="compile-provider"
-                  value={providerId}
-                  onChange={(event) => {
-                    providerTouched.current = true
-                    setProviderId(event.target.value as ProviderId)
-                  }}
-                >
-                  <option value="fixture">Fixture (offline, deterministic)</option>
-                  <option value="meta">Meta (requires MODEL_API_KEY)</option>
-                </select>
-                {providerId === 'fixture' && detail.applicationScope !== TARGET.id && (
-                  <p className="muted" data-semid="fixture-site-hint">
-                    Fixture is tuned for Saltbreak; set MODEL_API_KEY for general sites.
-                  </p>
-                )}
                 <Button
                   variant="primary"
                   data-semid="generate-draft"
@@ -229,17 +245,16 @@ export function RecordingsSection({
                   )}
                   <h4>Parameter bindings</h4>
                   <ul data-semid="proposal-bindings">
-                    {Object.entries(compile.proposal.demonstrated).map(([shown, path]) => (
-                      <li key={shown}>
-                        {shown} becomes <code>{path}</code>
-                      </li>
+                    {bindingSentences(compile.proposal.demonstrated).map((line) => (
+                      <li key={line}>{line}</li>
                     ))}
                   </ul>
                   <h4>Steps</h4>
                   <ol data-semid="proposal-steps">
                     {compile.proposal.recipe.steps.map((step) => (
                       <li key={step.id}>
-                        <strong>{step.id}</strong> [{step.kind}]{step.goal ? ` — ${step.goal}` : ''}
+                        <strong>{stepLabel(step)}</strong>{' '}
+                        <span className="muted">{step.id}</span>
                       </li>
                     ))}
                   </ol>

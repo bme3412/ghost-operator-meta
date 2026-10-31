@@ -1,11 +1,11 @@
-import { BrowserWindow } from 'electron'
 import type { ProviderId, RunProgress } from '../../shared/schemas'
 import { EVENTS } from '../ipc/channels'
-import { broadcastLibraryChanged } from '../ipc/broadcast'
+import { broadcastLibraryChanged, sendToRoles } from '../ipc/broadcast'
 import { explainStep } from '../providers/explain'
 import { getActiveVersion, getSkill } from '../skills'
 import { upsertRun } from '../store'
-import { resolveTargetUrl } from '../target'
+import { getTargetInfo, resolveTargetUrl } from '../target'
+import { isTargetNavigationAllowed } from '../windows/guards'
 import { getWindow } from '../windows/registry'
 import { createRunner, type Runner } from './index'
 import {
@@ -55,10 +55,26 @@ async function dom<T>(code: string): Promise<T> {
   }
 }
 
-function broadcast(progress: RunProgress | null): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send(EVENTS.runProgress, progress)
+/** Isolated world for read-only check queries; the page cannot see or spoof it. */
+const CHECK_WORLD_ID = 1337
+
+// Read-only check queries run in an isolated world with its own JS wrappers,
+// so a page that overrides querySelector or Element methods reads back
+// honestly. Actions stay in the main world so page event handlers observe
+// exactly what a user gesture would produce.
+async function domRead<T>(code: string): Promise<T> {
+  try {
+    const raw = await contents().executeJavaScriptInIsolatedWorld(CHECK_WORLD_ID, [{ code }])
+    // A single script resolves to its value; tolerate an array shape too.
+    return (Array.isArray(raw) ? raw[0] : raw) as T
+  } catch (error) {
+    throw new Error(`Target page query failed: ${(error as Error).message}`)
   }
+}
+
+function broadcast(progress: RunProgress | null): void {
+  // Run progress carries run inputs: the panel alone receives it.
+  sendToRoles(['panel'], EVENTS.runProgress, progress)
   if (progress && ['succeeded', 'failed', 'cancelled'].includes(progress.status)) {
     broadcastLibraryChanged()
   }
@@ -75,6 +91,7 @@ export function getRunner(): Runner {
     singleton = createRunner({
       now: () => Date.now(),
       tick: () => new Promise((resolve) => setImmediate(resolve)),
+      getScopeId: () => getTargetInfo().id,
       getSkillVersion: (skillId, version) => {
         const skill = getSkill(skillId)
         if (!skill) return null
@@ -82,15 +99,16 @@ export function getRunner(): Runner {
           version === null
             ? getActiveVersion(skillId)
             : (skill.versions.find((v) => v.version === version) ?? null)
-        if (!record || (version === null && record.status !== 'published')) return null
+        // Only published versions run — explicit version numbers included.
+        if (!record || record.status !== 'published') return null
         return { skillName: skill.name, recipe: record.recipe }
       },
       domQuery: {
-        visible: (selector: string): Promise<boolean> => dom<boolean>(visibleSnippet(selector)),
+        visible: (selector: string): Promise<boolean> => domRead<boolean>(visibleSnippet(selector)),
         text: (selector: string): Promise<string | null> =>
-          dom<string | null>(textSnippet(selector)),
+          domRead<string | null>(textSnippet(selector)),
         value: (selector: string): Promise<string | null> =>
-          dom<string | null>(valueSnippet(selector))
+          domRead<string | null>(valueSnippet(selector))
       },
       domAct: {
         click: async (selector: string): Promise<void> => {
@@ -112,6 +130,12 @@ export function getRunner(): Runner {
           const url = path.startsWith('http')
             ? path
             : `${resolveTargetUrl()}${path.startsWith('/') ? path : `/${path}`}`
+          // programmatic loadURL emits no will-navigate, so enforce the same
+          // origin lock here: a run must never leave the configured origin,
+          // whatever the recipe or run inputs contain.
+          if (!isTargetNavigationAllowed(url, resolveTargetUrl())) {
+            throw new Error(`Navigation to ${url} leaves the target origin.`)
+          }
           // Attach before navigating so the load event cannot slip past us.
           const load = startPageLoadWait(loadSource(target.webContents), {
             timeoutMs: GOTO_LOAD_TIMEOUT_MS

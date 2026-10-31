@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import type { RunRecord } from '../../../shared/schemas'
+import type { RunRecord, SkillSummary } from '../../../shared/schemas'
+import { friendlyError } from '../lib/errors'
 
 export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.Element {
   const [runs, setRuns] = useState<RunRecord[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(focusId)
   const [detail, setDetail] = useState<RunRecord | null>(null)
+  const [skillNames, setSkillNames] = useState<Map<string, string>>(new Map())
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -12,7 +14,11 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
       window.ghost.runs
         .list()
         .then(setRuns)
-        .catch((err: unknown) => setError(String(err)))
+        .catch((err: unknown) => setError(friendlyError(err)))
+      window.ghost.skills
+        .list()
+        .then((rows: SkillSummary[]) => setSkillNames(new Map(rows.map((row) => [row.id, row.name]))))
+        .catch(() => undefined)
     }
     load()
     const offLibrary = window.ghost.library.onChanged(load)
@@ -31,13 +37,13 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
     window.ghost.runs
       .get(selectedId)
       .then(setDetail)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [selectedId])
 
   return (
-    <div className="studio-split">
-      <div className="studio-list" role="listbox" aria-label="Runs">
-        {runs.length === 0 && <p className="muted">No runs yet. Start one from the sidecar.</p>}
+    <div className="library-split">
+      <div className="library-list" role="listbox" aria-label="Runs">
+        {runs.length === 0 && <p className="muted">No runs yet. Run a skill from Home.</p>}
         {runs.map((run) => (
           <button
             key={run.id}
@@ -48,7 +54,7 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
             onClick={() => setSelectedId(run.id)}
           >
             <strong>
-              {run.skillId} v{run.skillVersion}
+              {skillNames.get(run.skillId) ?? run.skillId} v{run.skillVersion}
             </strong>
             <span className="muted">
               {run.mode} · {run.status} · {new Date(run.startedAt).toLocaleString()}
@@ -56,7 +62,7 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
           </button>
         ))}
       </div>
-      <div className="studio-detail">
+      <div className="library-detail">
         {error !== null && (
           <p className="alert-error" role="alert">
             {error}
@@ -66,7 +72,7 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
         {detail && (
           <article>
             <h2 data-semid="run-heading">
-              {detail.skillId} v{detail.skillVersion}{' '}
+              {skillNames.get(detail.skillId) ?? detail.skillId} v{detail.skillVersion}{' '}
               <span className="muted">
                 ({detail.mode} · {detail.status})
               </span>

@@ -110,10 +110,14 @@ export function updateDraft(request: UpdateDraftRequest): Skill {
   const record = skill.versions.find((v) => v.version === request.version)
   if (!record) throw new Error(`Unknown version ${request.version}.`)
   if (record.status !== 'draft') throw new Error('Published versions are immutable.')
-  if (request.recipe) {
-    // Drafts keep their creating site; the scope check pins that site.
-    const scopeId = record.recipe.allowedApplications[0] ?? TARGET.id
-    assertRecipeValid({ ...request.recipe, id: skill.id, version: request.version }, scopeId)
+  // Drafts keep their creating site: validate AND store the pinned recipe so
+  // client-supplied allowedApplications can never widen the scope.
+  const scopeId = record.recipe.allowedApplications[0] ?? TARGET.id
+  const recipe = request.recipe
+    ? { ...request.recipe, allowedApplications: [scopeId], id: skill.id, version: request.version }
+    : null
+  if (recipe) {
+    assertRecipeValid(recipe, scopeId)
   }
   const updated: Skill = {
     ...skill,
@@ -121,9 +125,7 @@ export function updateDraft(request: UpdateDraftRequest): Skill {
       v.version === request.version
         ? {
             ...v,
-            recipe: request.recipe
-              ? { ...request.recipe, id: skill.id, version: v.version }
-              : v.recipe,
+            recipe: recipe ?? v.recipe,
             instructions: request.instructions ?? v.instructions
           }
         : v

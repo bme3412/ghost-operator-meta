@@ -1,7 +1,12 @@
 import { BrowserWindow } from 'electron'
 import { join } from 'node:path'
 
-export type RendererPage = 'toolbar' | 'sidecar' | 'studio' | 'target-offline'
+/** Absolute path of the bundled target-offline page for this build. */
+export function offlinePageFilePath(): string {
+  return join(__dirname, '..', 'renderer', 'target-offline.html')
+}
+
+export type RendererPage = 'panel' | 'target-offline'
 
 export function isDev(): boolean {
   return process.env['ELECTRON_RENDERER_URL'] !== undefined
@@ -18,7 +23,11 @@ export function baseWebPreferences(): Electron.WebPreferences {
     // Sandboxed renderers get no Node.js; they reach main only through the
     // contextBridge surface. The preload uses ipcRenderer/DOM only, so every
     // window — including the remote target — runs sandboxed.
-    sandbox: true
+    sandbox: true,
+    // Stated explicitly so a default flip can never widen the surface.
+    nodeIntegration: false,
+    webSecurity: true,
+    allowRunningInsecureContent: false
   }
 }
 

@@ -1,11 +1,11 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { roleForWebContents, type WindowRole } from '../windows/registry'
 
-/** Trusted first-party windows. The target window loads untrusted remote content. */
-export const APP_ROLES: readonly WindowRole[] = ['toolbar', 'sidecar', 'studio']
+/** Trusted first-party window. The target window loads untrusted remote content. */
+export const APP_ROLES: readonly WindowRole[] = ['panel']
 
 /** Every registered window, including the capture-only target window. */
-export const ALL_ROLES: readonly WindowRole[] = ['target', 'toolbar', 'sidecar', 'studio']
+export const ALL_ROLES: readonly WindowRole[] = ['target', 'panel']
 
 /** Only the target window's capture preload. */
 export const TARGET_ONLY: readonly WindowRole[] = ['target']

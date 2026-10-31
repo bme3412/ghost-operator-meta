@@ -31,7 +31,7 @@ Ghost Operator drives Saltbreak through its real UI, so both run together:
 cd web-app && pnpm install && pnpm db:seed && pnpm dev:saltbreak   # http://localhost:3000
 
 # Terminal 2: Ghost Operator
-cd desktop-app && pnpm dev        # target + toolbar + sidecar + studio
+cd desktop-app && pnpm dev        # target website + Ghost panel
 ```
 
 Other commands:
@@ -41,7 +41,9 @@ pnpm build      # production bundle to out/
 pnpm preview    # launch the production bundle
 ```
 
-If Saltbreak is not running, the target window shows how to start it.
+If Saltbreak is not running, the panel's Home view shows the connection
+status with setup commands, and the target window shows a self-updating
+offline page that opens Saltbreak as soon as it listens.
 
 ## Verify
 
@@ -78,29 +80,28 @@ environment variables always win over that file. Packaged builds read
 
 ## Demo script (the first complete experience)
 
-1. Open the Saltbreak home page in the target window.
-2. Click **Teach** in the toolbar.
+1. Confirm the green target connection on Home.
+2. Click **Teach a new task** and name the goal, e.g. `Resolve a support ticket`.
 3. Demonstrate resolving a ticket: Staff → Support inbox → **resolved** on `T-101`.
 4. Click **Add note** and explain a decision.
-5. Click **Finish** — the studio opens on the recording.
-6. Pick the provider and click **Generate draft procedure**.
-7. Inspect bindings (`Ticket "T-101"` becomes `inputs.ticketId`) and unresolved
-   items, **Save as draft skill**, then **Publish**.
-8. In the sidecar pick the procedure and enter a new ticket, e.g. `T-102`.
-9. Click **Guide me** or **Assisted run**.
-10. Step through (guide) or watch (assisted) as the new ticket is resolved.
-11. Verify: the ticket status in Saltbreak, and the checks in the sidecar.
-12. Open the run in Studio → Runs for the readable record.
+5. Click **Finish** — the draft procedure generates itself for review.
+6. Inspect the plain-language steps and callouts, then **Save and publish**.
+7. Run setup opens with the new skill selected; enter a new ticket, e.g. `T-102`.
+8. Pick **Guide me** (you click, Ghost checks) or **Do it for me**, then **Start run**.
+9. Step through (guide) or watch (assisted) as the new ticket is resolved.
+10. Verify: the ticket status in Saltbreak, and the checks on the result view.
+11. Click **Run on another case** to reuse the skill again, or **See details**
+    for the readable record in Library → Runs.
 
-Discover (no demo needed): open Studio → Task map → **Site** → **Scan site**,
+Discover (no demo needed): open Library → Task map → **Site** → **Scan site**,
 watch `/staff/inbox` land in the page graph, then read the mined follow-ups
 in Suggestions — e.g. `Automate submission on /staff/inbox`. Click **Teach this**
-on one to open the toolbar Teach form with its goal prefilled.
+on one to open Teach with its goal prefilled.
 
 ## Architecture
 
-- Four windows: target (Saltbreak web app), toolbar (recorder), sidecar
-  (guide / assisted), studio (recordings, skills, runs, task map).
+- Two windows: target (Saltbreak web app) and the Ghost panel (Home, Teach,
+  recording, review, run, Library, Settings). The panel widens for the Library.
 - The target page is observed, never owned: a preload capture layer records
   committed DOM events; the runner replays real clicks/fills/submits and
   verifies by reading the live page. Ghost never imports Saltbreak code.
@@ -124,6 +125,6 @@ on one to open the toolbar Teach form with its goal prefilled.
   runner, providers, skills
 - `src/preload/` — typed IPC bridge (`window.ghost`) + target-page capture
 - `src/shared/` — Zod schemas, target definition, skill formatting, policy
-- `src/renderer/` — toolbar, sidecar, studio, and the target-offline page
+- `src/renderer/` — panel views, library sections, and the target-offline page
 - `tests/unit/` — Vitest recorder/compiler/skills/runner tests
 - `tests/e2e/` — Playwright Electron tests (boots Saltbreak on :3100)

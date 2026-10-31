@@ -6,7 +6,7 @@
  * Electron-free so unit tests can exercise every helper with fakes.
  */
 import type { CheckRef } from '../../shared/schemas'
-import { resolvePlaceholders, type DomQuery } from './checks'
+import { resolveSelectorPlaceholders, type DomQuery } from './checks'
 
 /** Upper bound for waiting on a step's check selectors to become ready. */
 export const CHECK_WAIT_TIMEOUT_MS = 5000
@@ -49,7 +49,7 @@ export function selectorForCheck(
 ): string | null {
   if (!ref.selector) return null
   try {
-    return resolvePlaceholders(ref.selector, inputs)
+    return resolveSelectorPlaceholders(ref.selector, inputs)
   } catch {
     return null
   }

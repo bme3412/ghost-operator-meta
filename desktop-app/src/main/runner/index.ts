@@ -9,6 +9,7 @@ import type {
   SkillStep,
   StartRunRequest
 } from '../../shared/schemas'
+import { assertRecipeValid } from '../../shared/policy/recipe'
 import { evaluateCheck, resolvePlaceholders, type DomQuery } from './checks'
 import {
   executeComputerTask,
@@ -21,6 +22,8 @@ import { waitForStepChecks } from './wait'
 export interface RunnerDeps {
   now: () => number
   tick: () => Promise<void>
+  /** Live target site id. Runs refuse recipes that don't allow this scope. */
+  getScopeId: () => string
   getSkillVersion: (skillId: string, version: number | null) => {
     skillName: string
     recipe: SkillRecipe
@@ -61,6 +64,15 @@ export function createRunner(deps: RunnerDeps): {
 } {
   let active: ActiveRun | null = null
   let counter = 0
+  /**
+   * The run an assisted loop is currently driving, if any. Control ops never
+   * spawn a second loop for a run that already has one in flight; combined
+   * with the post-await status checks below, pause/resume races converge on
+   * exactly one loop without a generation counter.
+   */
+  let loopRun: ActiveRun | null = null
+  /** Serializes the async guide operations; concurrent advance/retry throws. */
+  let stepBusy = false
 
   function stepView(
     step: SkillStep,
@@ -156,6 +168,13 @@ export function createRunner(deps: RunnerDeps): {
   }
 
   function finishTerminal(run: ActiveRun, status: ExecutionStatus, error?: string): RunProgress {
+    // Terminal states are sticky: a late-arriving step completion must never
+    // overwrite a cancellation (or any other terminal outcome).
+    if (TERMINAL.has(run.record.status)) {
+      const settled = progress()
+      if (!settled) throw new Error('No active run.')
+      return settled
+    }
     run.record.status = status
     run.record.endedAt = new Date(deps.now()).toISOString()
     run.record.awaitingApproval = false
@@ -164,14 +183,30 @@ export function createRunner(deps: RunnerDeps): {
     return commit()
   }
 
-  /** Advance past a completed step; finishes the run when steps run out. */
+  /**
+   * Advance past a completed step; finishes the run when steps run out.
+   * Returns null when the run already ended (stop won the race).
+   */
   function advanceIndex(run: ActiveRun): RunProgress | null {
+    if (TERMINAL.has(run.record.status)) return null
     run.record.currentStepIndex += 1
     if (run.record.currentStepIndex >= run.recipe.steps.length) {
       return finishTerminal(run, 'succeeded')
     }
     deps.highlight(selectorForStep(currentStep(run), run.record.inputs))
     return commit()
+  }
+
+  /** Latest progress snapshot, or throw when no run is active. */
+  function currentProgressOrThrow(): RunProgress {
+    const next = progress()
+    if (!next) throw new Error('No active run.')
+    return next
+  }
+
+  /** True when the loop may keep driving `run` after an await. */
+  function loopMayContinue(run: ActiveRun): boolean {
+    return active === run && !TERMINAL.has(run.record.status)
   }
 
   async function executeAssistedStep(run: ActiveRun, step: SkillStep): Promise<void> {
@@ -230,26 +265,41 @@ export function createRunner(deps: RunnerDeps): {
   }
 
   async function assistedLoop(run: ActiveRun): Promise<void> {
-    while (
-      active === run &&
-      run.record.status === 'running' &&
-      !run.record.awaitingApproval &&
-      run.record.currentStepIndex < run.recipe.steps.length
-    ) {
-      await deps.tick()
-      if (active !== run || run.record.status !== 'running' || run.record.awaitingApproval) {
-        return
+    loopRun = run
+    try {
+      while (
+        active === run &&
+        run.record.status === 'running' &&
+        !run.record.awaitingApproval &&
+        run.record.currentStepIndex < run.recipe.steps.length
+      ) {
+        await deps.tick()
+        if (!loopMayContinue(run)) return
+        if (run.record.status !== 'running' || run.record.awaitingApproval) return
+        try {
+          const step = currentStep(run)
+          await executeAssistedStep(run, step)
+          // Re-check after the await: stop, pause, or a new run may have
+          // landed while the DOM action was in flight.
+          if (!loopMayContinue(run)) return
+          if (run.record.status !== 'running' || run.record.awaitingApproval) return
+          const done = advanceIndex(run)
+          if (!done || TERMINAL.has(done.status)) return
+        } catch (error) {
+          if (!loopMayContinue(run)) return
+          finishTerminal(run, 'failed', (error as Error).message)
+          return
+        }
       }
-      try {
-        const step = currentStep(run)
-        await executeAssistedStep(run, step)
-        if (run.record.awaitingApproval) return
-        const done = advanceIndex(run)
-        if (done && TERMINAL.has(done.status)) return
-      } catch (error) {
-        finishTerminal(run, 'failed', (error as Error).message)
-        return
-      }
+    } finally {
+      if (loopRun === run) loopRun = null
+    }
+  }
+
+  /** Drive an assisted run unless a loop is already driving it. */
+  function ensureLoop(run: ActiveRun): void {
+    if (run.record.mode === 'assisted' && loopRun !== run) {
+      void assistedLoop(run)
     }
   }
 
@@ -267,6 +317,10 @@ export function createRunner(deps: RunnerDeps): {
       if (found.recipe.steps.length === 0) {
         throw new Error('Skill has no steps.')
       }
+      // Re-validate at run time: stored recipes predate policy fixes, and the
+      // skill must allow the live target scope — never run a stale or
+      // foreign-site recipe against the current target.
+      assertRecipeValid(found.recipe, deps.getScopeId())
       const startedAtMs = deps.now()
       counter += 1
       const mode: RunMode = request.mode
@@ -289,9 +343,7 @@ export function createRunner(deps: RunnerDeps): {
       }
       deps.highlight(selectorForStep(currentStep(active), active.record.inputs))
       const first = commit()
-      if (mode === 'assisted') {
-        void assistedLoop(active)
-      }
+      ensureLoop(active)
       return first
     },
 
@@ -314,9 +366,7 @@ export function createRunner(deps: RunnerDeps): {
       }
       run.record.status = 'running'
       const next = commit()
-      if (run.record.mode === 'assisted') {
-        void assistedLoop(run)
-      }
+      ensureLoop(run)
       return next
     },
 
@@ -326,36 +376,43 @@ export function createRunner(deps: RunnerDeps): {
     },
 
     async advanceRun(runId: string): Promise<RunProgress> {
-      const run = requireActive(runId)
-      if (run.record.mode !== 'guide') {
-        throw new Error('Only guided runs advance manually.')
+      if (stepBusy) throw new Error('A step is already in progress.')
+      stepBusy = true
+      try {
+        const run = requireActive(runId)
+        if (run.record.mode !== 'guide') {
+          throw new Error('Only guided runs advance manually.')
+        }
+        if (run.record.status !== 'running') {
+          throw new Error(`Cannot advance a ${run.record.status} run.`)
+        }
+        if (loopRun === run) {
+          throw new Error('A run loop is driving this run.')
+        }
+        const step = currentStep(run)
+        const attemptIndex = run.record.attempts.filter((a) => a.stepId === step.id).length
+        const checkResults = await evaluateStepChecks(run, step)
+        const failed = checkResults.filter((c) => !c.passed)
+        run.record.attempts.push({
+          runId: run.record.id,
+          stepId: step.id,
+          attempt: attemptIndex,
+          actions: ['confirmed by user in guided mode'],
+          observedOutcome: step.goal ?? 'Confirmed.',
+          passed: failed.length === 0
+        })
+        run.record.checks.push(...checkResults)
+        if (failed.length > 0) {
+          return finishTerminal(
+            run,
+            'failed',
+            `Check(s) failed on step "${step.id}": ${failed.map((c) => c.check).join(', ')}.`
+          )
+        }
+        return advanceIndex(run) ?? currentProgressOrThrow()
+      } finally {
+        stepBusy = false
       }
-      if (run.record.status !== 'running') {
-        throw new Error(`Cannot advance a ${run.record.status} run.`)
-      }
-      const step = currentStep(run)
-      const attemptIndex = run.record.attempts.filter((a) => a.stepId === step.id).length
-      const checkResults = await evaluateStepChecks(run, step)
-      const failed = checkResults.filter((c) => !c.passed)
-      run.record.attempts.push({
-        runId: run.record.id,
-        stepId: step.id,
-        attempt: attemptIndex,
-        actions: ['confirmed by user in guided mode'],
-        observedOutcome: step.goal ?? 'Confirmed.',
-        passed: failed.length === 0
-      })
-      run.record.checks.push(...checkResults)
-      if (failed.length > 0) {
-        return finishTerminal(
-          run,
-          'failed',
-          `Check(s) failed on step "${step.id}": ${failed.map((c) => c.check).join(', ')}.`
-        )
-      }
-      const done = advanceIndex(run)
-      if (!done) throw new Error('No active run.')
-      return done
     },
 
     approveRun(runId: string): RunProgress {
@@ -373,43 +430,52 @@ export function createRunner(deps: RunnerDeps): {
         pending.passed = true
         pending.observedOutcome = `${pending.observedOutcome} Approved by user.`
       }
-      const done = advanceIndex(run)
-      if (!done) throw new Error('No active run.')
-      if (run.record.mode === 'assisted' && !TERMINAL.has(done.status)) {
-        void assistedLoop(run)
+      const done = advanceIndex(run) ?? currentProgressOrThrow()
+      if (!TERMINAL.has(done.status)) {
+        ensureLoop(run)
       }
       return done
     },
 
     async retryRun(runId: string): Promise<RunProgress> {
-      const run = requireActive(runId)
-      if (run.record.status !== 'running' && run.record.status !== 'paused') {
-        throw new Error(`Cannot retry a ${run.record.status} run.`)
+      if (stepBusy) throw new Error('A step is already in progress.')
+      stepBusy = true
+      try {
+        const run = requireActive(runId)
+        if (run.record.status !== 'running' && run.record.status !== 'paused') {
+          throw new Error(`Cannot retry a ${run.record.status} run.`)
+        }
+        if (loopRun === run) {
+          throw new Error('A run loop is driving this run.')
+        }
+        const step = currentStep(run)
+        if (step.kind !== 'verify') {
+          throw new Error('Only verify steps can be retried.')
+        }
+        if (run.record.status === 'paused' && !run.record.awaitingApproval) {
+          run.record.status = 'running'
+        }
+        const checkResults = await evaluateStepChecks(run, step)
+        const failed = checkResults.filter((c) => !c.passed)
+        run.record.attempts.push({
+          runId: run.record.id,
+          stepId: step.id,
+          attempt: run.record.attempts.filter((a) => a.stepId === step.id).length,
+          actions: ['retried checks'],
+          observedOutcome: failed.length === 0 ? 'All checks passed.' : 'Checks still failing.',
+          passed: failed.length === 0
+        })
+        run.record.checks.push(...checkResults)
+        if (failed.length > 0) {
+          return commit()
+        }
+        const done = advanceIndex(run) ?? currentProgressOrThrow()
+        // A retry that un-sticks a paused assisted run must resume driving it.
+        if (!TERMINAL.has(done.status)) ensureLoop(run)
+        return done
+      } finally {
+        stepBusy = false
       }
-      const step = currentStep(run)
-      if (step.kind !== 'verify') {
-        throw new Error('Only verify steps can be retried.')
-      }
-      if (run.record.status === 'paused' && !run.record.awaitingApproval) {
-        run.record.status = 'running'
-      }
-      const checkResults = await evaluateStepChecks(run, step)
-      const failed = checkResults.filter((c) => !c.passed)
-      run.record.attempts.push({
-        runId: run.record.id,
-        stepId: step.id,
-        attempt: run.record.attempts.filter((a) => a.stepId === step.id).length,
-        actions: ['retried checks'],
-        observedOutcome: failed.length === 0 ? 'All checks passed.' : 'Checks still failing.',
-        passed: failed.length === 0
-      })
-      run.record.checks.push(...checkResults)
-      if (failed.length > 0) {
-        return commit()
-      }
-      const done = advanceIndex(run)
-      if (!done) throw new Error('No active run.')
-      return done
     }
   }
 }

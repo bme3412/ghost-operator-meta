@@ -1,6 +1,6 @@
 import type { SkillStep } from '../../shared/schemas'
 import { formatAttemptAction, orderedAttemptSelectors } from '../../shared/capture/selectors'
-import { resolvePlaceholders } from './checks'
+import { resolvePlaceholders, resolveSelectorPlaceholders } from './checks'
 
 /** Actions the runner can perform in the target page. Each throws on failure. */
 export interface DomAct {
@@ -26,7 +26,12 @@ export function resolveBindings(
 ): Record<string, string> {
   const resolved: Record<string, string> = {}
   for (const [name, template] of Object.entries(step.bindings)) {
-    resolved[name] = resolvePlaceholders(template, inputs)
+    // Selector bindings are escaped so run inputs can't inject CSS; every
+    // other binding (values, actions) substitutes verbatim.
+    resolved[name] =
+      name === 'selector'
+        ? resolveSelectorPlaceholders(template, inputs)
+        : resolvePlaceholders(template, inputs)
   }
   return resolved
 }
@@ -36,7 +41,7 @@ export function selectorForStep(step: SkillStep, inputs: Record<string, string>)
   const selector = step.bindings['selector']
   if (!selector) return null
   try {
-    return resolvePlaceholders(selector, inputs)
+    return resolveSelectorPlaceholders(selector, inputs)
   } catch {
     return null
   }
@@ -52,12 +57,12 @@ export function attemptSelectorsForStep(
   inputs: Record<string, string>
 ): string[] {
   const primary = step.bindings['selector']
-    ? resolvePlaceholders(step.bindings['selector'], inputs)
+    ? resolveSelectorPlaceholders(step.bindings['selector'], inputs)
     : undefined
   const fallbacks: string[] = []
   for (const raw of step.selectorCandidates ?? []) {
     try {
-      fallbacks.push(resolvePlaceholders(raw, inputs))
+      fallbacks.push(resolveSelectorPlaceholders(raw, inputs))
     } catch {
       // Unresolvable candidate; it cannot be attempted.
     }

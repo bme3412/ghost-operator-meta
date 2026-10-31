@@ -2,15 +2,13 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { z } from 'zod'
 import { RecordingEventInput, StartRecordingRequest } from '../../shared/schemas'
 import { getRecorder } from '../recorder/service'
-import { getWindow, openStudioForRecording } from '../windows/registry'
+import { navigatePanel } from '../windows/registry'
 import { broadcastLibraryChanged } from './broadcast'
 import { CHANNELS } from './channels'
 import { ALL_ROLES, APP_ROLES, TARGET_ONLY, assertSenderRole } from './sender'
 
 const ContextPayload = z.object({ caseId: z.string().min(1).nullable() })
-const NotePayload = z.object({ text: z.string() })
-const HeightPayload = z.object({ height: z.number().int().min(64).max(400) })
-const TOOLBAR_ONLY = ['toolbar'] as const
+const NotePayload = z.object({ text: z.string().max(2000) })
 
 export function registerRecorderHandlers(): void {
   const recorder = (): ReturnType<typeof getRecorder> => getRecorder()
@@ -58,18 +56,12 @@ export function registerRecorderHandlers(): void {
     assertSenderRole(event, CHANNELS.recorderFinish, APP_ROLES)
     const recording = await recorder().finish()
     broadcastLibraryChanged()
-    openStudioForRecording(recording.id)
+    navigatePanel({ view: 'review', recordingId: recording.id })
     return recording
   })
 
   ipcMain.handle(CHANNELS.recorderCancel, (event: IpcMainInvokeEvent) => {
     assertSenderRole(event, CHANNELS.recorderCancel, APP_ROLES)
     return recorder().cancel()
-  })
-
-  ipcMain.handle(CHANNELS.toolbarSetHeight, (event: IpcMainInvokeEvent, payload: unknown) => {
-    assertSenderRole(event, CHANNELS.toolbarSetHeight, TOOLBAR_ONLY)
-    const { height } = HeightPayload.parse(payload)
-    getWindow('toolbar')?.setContentSize(480, height)
   })
 }

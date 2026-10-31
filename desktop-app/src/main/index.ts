@@ -2,41 +2,31 @@ import { app, BrowserWindow, screen } from 'electron'
 import { loadLocalEnv } from './env'
 import { registerIpcHandlers } from './ipc'
 import { registerWindow } from './windows/registry'
-import { createSidecarWindow } from './windows/sidecar'
-import { createStudioWindow } from './windows/studio'
+import { createPanelWindow, PANEL_DOCKED_WIDTH } from './windows/panel'
 import { createTargetWindow } from './windows/target'
-import { createToolbarWindow } from './windows/toolbar'
 
 /** Local .env.local first so providers/target see it; real env always wins. */
 loadLocalEnv()
 
-/** Initial layout: target left, toolbar top-center, studio centered, sidecar docked. */
+/** Two windows: the target site on the left, the Ghost panel docked right. */
 function createAllWindows(): void {
   const area = screen.getPrimaryDisplay().workArea
   const margin = 24
+  const gap = 8
 
-  const target = createTargetWindow({ x: area.x + margin, y: area.y + margin })
+  const targetWidth = Math.max(
+    960,
+    Math.round(area.width - PANEL_DOCKED_WIDTH - margin * 2 - gap)
+  )
+  const targetHeight = Math.min(900, area.height - margin * 2)
+  const target = createTargetWindow({
+    x: area.x + margin,
+    y: area.y + margin,
+    width: targetWidth,
+    height: targetHeight
+  })
   registerWindow('target', target)
-
-  const toolbarWidth = 480
-  registerWindow(
-    'toolbar',
-    createToolbarWindow({
-      x: Math.round(area.x + Math.max(0, (area.width - toolbarWidth) / 2)),
-      y: area.y + 16
-    })
-  )
-  registerWindow('sidecar', createSidecarWindow(target))
-
-  const studioWidth = Math.min(1100, area.width - margin * 2)
-  const studioHeight = Math.min(800, area.height - margin * 2)
-  registerWindow(
-    'studio',
-    createStudioWindow({
-      x: Math.round(area.x + (area.width - studioWidth) / 2),
-      y: Math.round(area.y + (area.height - studioHeight) / 2)
-    })
-  )
+  registerWindow('panel', createPanelWindow(target))
 }
 
 void app.whenReady().then(() => {

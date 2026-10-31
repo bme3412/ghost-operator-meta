@@ -62,6 +62,18 @@ describe('fixture compiler', () => {
     expect(proposal.recipe.allowedApplications).toEqual(['saltbreak'])
   })
 
+  it('labels steps in plain language without record identities', () => {
+    const proposal = compileFixture(demoRecording())
+    const goals = proposal.recipe.steps.map((s) => s.goal)
+    expect(goals).toEqual([
+      'Open / in Saltbreak.',
+      'Click Staff.',
+      'Click the support inbox.',
+      'Click Resolved for the ticket.',
+      'Verify the ticket shows as resolved.'
+    ])
+  })
+
   it('parameterizes the demonstrated identity in selectors and checks', () => {
     const proposal = compileFixture(demoRecording())
     const click = proposal.recipe.steps.find((s) => s.id === 'click-ticket-resolve-t-101')
@@ -95,7 +107,7 @@ describe('fixture compiler', () => {
     }
     const proposal = compileFixture(sparse)
     expect(proposal.recipe.steps.map((s) => s.kind)).toEqual(['review'])
-    expect(proposal.unresolved.join(' ')).toContain('no stable selector')
+    expect(proposal.unresolved.join(' ')).toContain('needs your review')
   })
 
   it('reports pause gaps as review items', () => {
@@ -104,7 +116,7 @@ describe('fixture compiler', () => {
       events: [...demoRecording().events, { sequence: 5, type: 'gap', atMs: NOW + 5_000 }]
     }
     const proposal = compileFixture(gappy)
-    expect(proposal.unresolved.join(' ')).toContain('pause gap')
+    expect(proposal.unresolved.join(' ')).toContain('You paused 1 time')
   })
 
   it('omits selectorCandidates when events carry no chain', () => {

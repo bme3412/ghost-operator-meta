@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   CompileResult,
+  PanelNavigateParams,
   ProviderId,
   PublishRequest,
   RecorderStatePush,
@@ -15,14 +16,12 @@ import type {
   Skill,
   SkillSummary,
   StartRunRequest,
-  StudioShowPayload,
   Suggestion,
   SuggestAcceptPrefill,
   SuggestPolishResult,
-  TeachPrefillPayload,
   UpdateDraftRequest
 } from '../shared/schemas'
-import type { TargetInfo } from '../shared/target'
+import type { TargetInfo, TargetStatus } from '../shared/target'
 import { nextNavigateToEmit } from '../shared/capture/navigate'
 import {
   buildAccessibleDescriptor,
@@ -45,12 +44,17 @@ function onPayload<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const api = {
-  ping: (): Promise<string> => ipcRenderer.invoke('ghost:ping'),
-  echo: (message: string): Promise<{ message: string }> =>
-    ipcRenderer.invoke('ghost:echo', { message }),
   target: {
     getInfo: (): Promise<TargetInfo> => ipcRenderer.invoke('target:get-info'),
-    setUrl: (url: string): Promise<TargetInfo> => ipcRenderer.invoke('target:set-url', { url })
+    setUrl: (url: string): Promise<TargetInfo> => ipcRenderer.invoke('target:set-url', { url }),
+    getStatus: (): Promise<TargetStatus> => ipcRenderer.invoke('target:get-status'),
+    show: (): Promise<void> => ipcRenderer.invoke('target:show')
+  },
+  panel: {
+    setLayout: (layout: 'docked' | 'expanded'): Promise<void> =>
+      ipcRenderer.invoke('panel:set-layout', { layout }),
+    onNavigate: (listener: (params: PanelNavigateParams) => void): (() => void) =>
+      onPayload<PanelNavigateParams>('ghost:panel-navigate', listener)
   },
   /** Guidance highlight from the runner. Null clears the highlight. */
   onHighlight: (listener: (semanticId: string | null) => void): (() => void) =>
@@ -71,12 +75,6 @@ const api = {
     cancel: (): Promise<RecorderStatePush> => ipcRenderer.invoke('recorder:cancel'),
     onState: (listener: (push: RecorderStatePush) => void): (() => void) =>
       onPayload<RecorderStatePush>('ghost:recording-state', listener)
-  },
-  toolbar: {
-    setHeight: (height: number): Promise<void> =>
-      ipcRenderer.invoke('toolbar:set-height', { height }),
-    onTeachPrefill: (listener: (payload: TeachPrefillPayload) => void): (() => void) =>
-      onPayload<TeachPrefillPayload>('ghost:teach-prefill', listener)
   },
   suggest: {
     list: (siteId?: string): Promise<Suggestion[]> =>
@@ -117,10 +115,6 @@ const api = {
     publish: (request: PublishRequest): Promise<Skill> =>
       ipcRenderer.invoke('skills:publish', request)
   },
-  studio: {
-    onShow: (listener: (payload: StudioShowPayload) => void): (() => void) =>
-      onPayload<StudioShowPayload>('ghost:studio-show', listener)
-  },
   providers: {
     getDefault: (): Promise<ProviderId> => ipcRenderer.invoke('providers:default')
   },
@@ -147,8 +141,6 @@ const api = {
       ipcRenderer.invoke('runs:explain', { runId, providerId }),
     showTarget: (runId: string): Promise<void> =>
       ipcRenderer.invoke('runs:show-target', { runId }),
-    showInStudio: (runId: string): Promise<void> =>
-      ipcRenderer.invoke('runs:show-in-studio', { runId }),
     list: (): Promise<RunRecord[]> => ipcRenderer.invoke('runs:list'),
     get: (runId: string): Promise<RunRecord | null> => ipcRenderer.invoke('runs:get', { runId }),
     onProgress: (listener: (progress: RunProgress | null) => void): (() => void) =>
@@ -172,41 +164,41 @@ const targetApi = {
     onPayload<string | null>('ghost:highlight', listener)
 }
 
+type PreloadRole = 'target' | 'panel' | 'untrusted'
+
+function processArgs(): readonly string[] {
+  try {
+    return typeof process !== 'undefined' ? process.argv : []
+  } catch {
+    return []
+  }
+}
+
 /**
- * True when this preload runs in the target window. The main process passes
- * --ghost-role=target via additionalArguments; the URL fallback covers
- * sandboxed contexts where process.argv is unavailable. App pages are local
- * files in production, or dev-server pages ending in
- * toolbar/sidecar/studio.html in development.
+ * Bridge selection is flag-driven: the main process passes --ghost-role=*
+ * via additionalArguments, which is visible to the sandboxed preload. No URL
+ * fallback: anything without a recognized flag (scout window, dropped files,
+ * unknown contexts) gets the capture-only bridge without capture listeners —
+ * never the full panel API.
  */
-function isTargetRole(): boolean {
-  try {
-    if (typeof process !== 'undefined' && process.argv.includes('--ghost-role=target')) {
-      return true
-    }
-  } catch {
-    // process is unavailable; fall through to the URL check.
-  }
-  try {
-    const { protocol, pathname } = window.location
-    if (pathname.endsWith('/target-offline.html')) return true
-    if (protocol === 'http:' || protocol === 'https:') {
-      return !/(toolbar|sidecar|studio)\.html$/.test(pathname)
-    }
-  } catch {
-    // location is unavailable; default to the app bridge.
-  }
-  return false
+function preloadRole(): PreloadRole {
+  const argv = processArgs()
+  if (argv.includes('--ghost-role=target')) return 'target'
+  if (argv.includes('--ghost-role=panel')) return 'panel'
+  return 'untrusted'
 }
 
 export type GhostApi = typeof api
 export type GhostTargetApi = typeof targetApi
 
-if (isTargetRole()) {
+const role = preloadRole()
+if (role === 'target') {
   contextBridge.exposeInMainWorld('ghost', targetApi)
   installTargetCapture()
-} else {
+} else if (role === 'panel') {
   contextBridge.exposeInMainWorld('ghost', api)
+} else {
+  contextBridge.exposeInMainWorld('ghost', targetApi)
 }
 
 /**
@@ -330,6 +322,10 @@ function installTargetCapture(): void {
     'click',
     (event) => {
       if (!active) return
+      // Only real user gestures enter a recording: page scripts must not be
+      // able to synthesize demonstrations (or pollute one with an assisted
+      // run's own synthetic input/change events).
+      if (!event.isTrusted) return
       const target = event.target
       if (!(target instanceof Element)) return
       const hit = target.closest('[data-semid],button,a,input,select,textarea,summary')
@@ -370,6 +366,10 @@ function installTargetCapture(): void {
     'change',
     (event) => {
       if (!active) return
+      // Only real user gestures enter a recording: page scripts must not be
+      // able to synthesize demonstrations (or pollute one with an assisted
+      // run's own synthetic input/change events).
+      if (!event.isTrusted) return
       const target = event.target
       if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLSelectElement)) {
         return
@@ -406,6 +406,10 @@ function installTargetCapture(): void {
     'submit',
     (event) => {
       if (!active) return
+      // Only real user gestures enter a recording: page scripts must not be
+      // able to synthesize demonstrations (or pollute one with an assisted
+      // run's own synthetic input/change events).
+      if (!event.isTrusted) return
       const target = event.target
       if (!(target instanceof HTMLFormElement)) return
       const chain = chainFor(target)

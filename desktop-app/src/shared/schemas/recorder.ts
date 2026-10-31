@@ -9,8 +9,8 @@ export const RecorderStatus = z.enum(['idle', 'recording', 'paused'])
 export type RecorderStatus = z.infer<typeof RecorderStatus>
 
 /**
- * Small summary of the most recently captured event, for live toolbar
- * feedback. Labels are short human-readable strings (e.g. "Clicked Resolve").
+ * Small summary of the most recently captured event, for the live
+ * recording feed. Labels are short human-readable strings (e.g. "Clicked Resolve").
  */
 export const RecorderLastEvent = z.object({
   type: RecordingEventType,
@@ -39,6 +39,6 @@ export type RecorderStatePush = z.infer<typeof RecorderStatePush>
 
 export const StartRecordingRequest = z.object({
   goal: z.string().min(1).max(200),
-  caseId: z.string().min(1).nullable().default(null)
+  caseId: z.string().min(1).max(200).nullable().default(null)
 })
 export type StartRecordingRequest = z.infer<typeof StartRecordingRequest>

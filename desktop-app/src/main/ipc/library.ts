@@ -19,7 +19,7 @@ const IdPayload = z.object({ id: z.string().min(1) })
 const ScreenshotPayload = z.object({ ref: z.string().min(1) })
 const SAFE_SCREENSHOT = /^screenshots\/[A-Za-z0-9._-]+\.png$/
 
-export function registerStudioHandlers(): void {
+export function registerLibraryHandlers(): void {
   ipcMain.handle(CHANNELS.recordingsList, (event: IpcMainInvokeEvent) => {
     assertSenderRole(event, CHANNELS.recordingsList, APP_ROLES)
     return loadState().recordings.map((r) => ({

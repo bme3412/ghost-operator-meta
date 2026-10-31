@@ -15,9 +15,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           'target-offline': page('target-offline'),
-          toolbar: page('toolbar'),
-          sidecar: page('sidecar'),
-          studio: page('studio')
+          panel: page('panel')
         }
       }
     }

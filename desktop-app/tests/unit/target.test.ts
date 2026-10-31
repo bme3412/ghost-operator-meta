@@ -1,12 +1,18 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { compileRecording } from '../../src/main/compiler/index'
 import { compileFixture } from '../../src/main/providers/fixture'
 import { listSkills, saveDraft } from '../../src/main/skills/index'
 import { resetStoreCache, saveState } from '../../src/main/store/index'
-import { getTargetInfo, resolveTargetUrl, setTargetUrl } from '../../src/main/target'
+import {
+  getTargetInfo,
+  isTargetReachable,
+  resolveCanonicalTargetUrl,
+  resolveTargetUrl,
+  setTargetUrl
+} from '../../src/main/target'
 import { applyTargetGuards } from '../../src/main/windows/guards'
 import { validateRecipe } from '../../src/shared/policy/recipe'
 import {
@@ -22,6 +28,16 @@ import {
 } from '../../src/shared/target'
 
 const SALTBREAK_URL = 'http://localhost:3000'
+
+// setTargetUrl canonicalizes over the network; fail every unstubbed request
+// so tests exercise the keep-the-typed-URL path deterministically offline.
+beforeEach(() => {
+  vi.stubGlobal('fetch', () => Promise.reject(new Error('connect ECONNREFUSED')))
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 function recipe(): SkillRecipe {
   return {
@@ -122,21 +138,89 @@ describe('site profiles', () => {
     expect(getTargetInfo().url).toBe('http://localhost:4123')
   })
 
-  it('persists the switched site and serves it as the live profile', () => {
-    const profile = setTargetUrl('https://ebay.com/')
+  it('persists the switched site and serves it as the live profile', async () => {
+    const profile = await setTargetUrl('https://ebay.com/')
     expect(profile).toEqual({ id: 'ebay-com', name: 'ebay.com', url: 'https://ebay.com' })
     expect(getTargetInfo()).toEqual(profile)
     expect(resolveTargetUrl()).toBe('https://ebay.com')
     // The configured Saltbreak URL maps back to the Saltbreak profile.
-    expect(setTargetUrl(SALTBREAK_URL).id).toBe('saltbreak')
+    expect((await setTargetUrl(SALTBREAK_URL)).id).toBe('saltbreak')
     expect(getTargetInfo().id).toBe('saltbreak')
   })
 
-  it('leaves the stored site untouched when the URL is invalid', () => {
-    setTargetUrl('https://ebay.com')
-    expect(() => setTargetUrl('ftp://files.example.com/x')).toThrow()
-    expect(() => setTargetUrl('nope')).toThrow()
+  it('leaves the stored site untouched when the URL is invalid', async () => {
+    await setTargetUrl('https://ebay.com')
+    await expect(setTargetUrl('ftp://files.example.com/x')).rejects.toThrow()
+    await expect(setTargetUrl('nope')).rejects.toThrow()
     expect(getTargetInfo().id).toBe('ebay-com')
+  })
+})
+
+describe('target reachability probe', () => {
+  it('reads any HTTP response as reachable, even an error status', async () => {
+    const notFound = (async () => ({})) as unknown as typeof fetch
+    expect(await isTargetReachable('http://localhost:3000', 1000, notFound)).toBe(true)
+  })
+
+  it('reads network failures as unreachable', async () => {
+    const refused = (async () => {
+      throw new Error('connect ECONNREFUSED')
+    }) as unknown as typeof fetch
+    expect(await isTargetReachable('http://localhost:3000', 1000, refused)).toBe(false)
+  })
+
+  it('reads timeouts as unreachable', async () => {
+    const hanging = ((_url: string, init?: { signal?: AbortSignal }) =>
+      new Promise((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+      })) as unknown as typeof fetch
+    expect(await isTargetReachable('http://localhost:3000', 20, hanging)).toBe(false)
+  })
+})
+
+describe('canonical target URLs', () => {
+  const redirectTo = (finalUrl: string): typeof fetch =>
+    (async () => ({ url: finalUrl })) as unknown as typeof fetch
+
+  it('follows same-host http-to-https redirects, keeping the typed path', async () => {
+    await expect(
+      resolveCanonicalTargetUrl(
+        'http://www.ebay.com/sch/i.html',
+        1000,
+        redirectTo('https://www.ebay.com/')
+      )
+    ).resolves.toBe('https://www.ebay.com/sch/i.html')
+  })
+
+  it('follows www consolidation within the same host', async () => {
+    await expect(
+      resolveCanonicalTargetUrl('http://ebay.com/', 1000, redirectTo('https://www.ebay.com/'))
+    ).resolves.toBe('https://www.ebay.com')
+  })
+
+  it('keeps the typed URL when the redirect leaves the host', async () => {
+    await expect(
+      resolveCanonicalTargetUrl('http://example.com/', 1000, redirectTo('https://other.com/'))
+    ).resolves.toBe('http://example.com/')
+  })
+
+  it('keeps the typed URL when the network fails', async () => {
+    const refused = (async () => {
+      throw new Error('connect ECONNREFUSED')
+    }) as unknown as typeof fetch
+    await expect(resolveCanonicalTargetUrl('http://localhost:3000', 1000, refused)).resolves.toBe(
+      'http://localhost:3000'
+    )
+  })
+
+  it('leaves non-redirecting URLs unchanged', async () => {
+    await expect(
+      resolveCanonicalTargetUrl(
+        'http://localhost:3000',
+        1000,
+        redirectTo('http://localhost:3000/')
+      )
+    ).resolves.toBe('http://localhost:3000')
   })
 })
 
@@ -156,7 +240,7 @@ describe('live target guards', () => {
     resetStoreCache()
   })
 
-  it('re-scopes the allowlist when the site switches', () => {
+  it('re-scopes the allowlist when the site switches', async () => {
     const handlers = new Map<string, (details: unknown) => void>()
     const window = {
       webContents: {
@@ -173,18 +257,24 @@ describe('live target guards', () => {
     expect(navigate).toBeDefined()
     expect(redirect).toBeDefined()
 
-    const attempt = (handler: (details: unknown) => void, url: string): boolean => {
+    const attempt = (
+      handler: (details: unknown) => void,
+      url: string,
+      isMainFrame = true
+    ): boolean => {
       let prevented = false
-      handler({ isMainFrame: true, url, preventDefault: () => (prevented = true) })
+      handler({ isMainFrame, url, preventDefault: () => (prevented = true) })
       return prevented
     }
 
     expect(attempt(navigate!, `${SALTBREAK_URL}/inbox`)).toBe(false)
-    setTargetUrl('https://ebay.com')
+    await setTargetUrl('https://ebay.com')
     expect(attempt(navigate!, `${SALTBREAK_URL}/inbox`)).toBe(true)
     expect(attempt(navigate!, 'https://ebay.com/itm/1')).toBe(false)
     expect(attempt(redirect!, 'http://evil.example.com/')).toBe(true)
     expect(attempt(navigate!, 'about:blank')).toBe(false)
+    expect(attempt(navigate!, 'https://ebay.com/embed', false)).toBe(false)
+    expect(attempt(navigate!, 'http://evil.example.com/', false)).toBe(true)
   })
 })
 
@@ -204,8 +294,8 @@ describe('per-site skills', () => {
     resetStoreCache()
   })
 
-  it('pins the creating site on drafts and validates against it', () => {
-    setTargetUrl('https://ebay.com')
+  it('pins the creating site on drafts and validates against it', async () => {
+    await setTargetUrl('https://ebay.com')
     const skill = saveDraft({
       name: 'Buy it now',
       recipe: recipe(),
@@ -246,7 +336,7 @@ describe('per-site skills', () => {
     const proposal = compileFixture(recording('saltbreak'))
     expect(proposal.recipe.allowedApplications).toEqual(['saltbreak'])
     expect(proposal.recipe.steps[0]?.applicationId).toBe('saltbreak')
-    expect(proposal.recipe.steps[0]?.goal).toBe('Click go.')
+    expect(proposal.recipe.steps[0]?.goal).toBe('Click Go.')
   })
 
   it('migrates states with and without a stored site', () => {

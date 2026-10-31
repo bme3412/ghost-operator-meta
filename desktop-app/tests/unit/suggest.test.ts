@@ -66,7 +66,13 @@ function register(role: WindowRole, sender: WebContents, send = vi.fn()): void {
   const webContents = Object.assign(sender, { send })
   registerWindow(
     role,
-    { webContents, isDestroyed: () => false, on: vi.fn() } as unknown as Electron.BrowserWindow
+    {
+      webContents,
+      isDestroyed: () => false,
+      on: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn()
+    } as unknown as Electron.BrowserWindow
   )
 }
 
@@ -156,7 +162,7 @@ describe('suggestion store', () => {
 })
 
 describe('suggest IPC', () => {
-  const toolbarSend = vi.fn()
+  const panelSend = vi.fn()
 
   beforeEach(() => {
     process.env.GHOST_STATE_PATH = join(mkdtempSync(join(tmpdir(), 'ghost-suggest-ipc-')), 'state.json')
@@ -165,8 +171,8 @@ describe('suggest IPC', () => {
     ;(
       BrowserWindow as unknown as { getAllWindows: () => Array<{ webContents: { send: unknown } }> }
     ).getAllWindows = () => []
-    const toolbar = fakeSender()
-    register('toolbar', toolbar, toolbarSend)
+    const panel = fakeSender()
+    register('panel', panel, panelSend)
     register('target', fakeSender())
     registerSuggestHandlers()
   })
@@ -190,34 +196,35 @@ describe('suggest IPC', () => {
     ])
     const map = handlers()
     const list = map.get(CHANNELS.suggestList)!
-    const studioSender = fakeSender()
-    register('studio', studioSender)
-    expect(await list(fakeEvent(studioSender), {})).toHaveLength(2)
-    expect(await list(fakeEvent(studioSender), { siteId: 'saltbreak' })).toHaveLength(1)
+    const panelSender = fakeSender()
+    register('panel', panelSender)
+    expect(await list(fakeEvent(panelSender), {})).toHaveLength(2)
+    expect(await list(fakeEvent(panelSender), { siteId: 'saltbreak' })).toHaveLength(1)
   })
 
   it('dismisses through the channel and broadcasts the change', async () => {
     appendMinedSuggestions([suggestion()])
-    const studioSender = fakeSender()
-    register('studio', studioSender)
+    const panelSender = fakeSender()
+    register('panel', panelSender)
     const dismissed = (await handlers().get(CHANNELS.suggestDismiss)!(
-      fakeEvent(studioSender),
+      fakeEvent(panelSender),
       { id: 'sug-1' }
     )) as SuggestionType
     expect(dismissed.status).toBe('dismissed')
     expect(listSuggestions()[0]!.status).toBe('dismissed')
   })
 
-  it('accepts through the channel, returns the prefill, and pushes to the toolbar', async () => {
+  it('accepts through the channel, returns the prefill, and navigates the panel to teach', async () => {
     appendMinedSuggestions([suggestion()])
-    const studioSender = fakeSender()
-    register('studio', studioSender)
+    const panelSender = fakeSender()
+    register('panel', panelSender, panelSend)
     const prefill = (await handlers().get(CHANNELS.suggestAccept)!(
-      fakeEvent(studioSender),
+      fakeEvent(panelSender),
       { id: 'sug-1' }
     )) as { goal: string; siteId: string }
     expect(prefill).toEqual({ goal: 'Turn this click flow into a macro', siteId: 'saltbreak' })
-    expect(toolbarSend).toHaveBeenCalledWith(EVENTS.teachPrefill, {
+    expect(panelSend).toHaveBeenCalledWith(EVENTS.panelNavigate, {
+      view: 'teach',
       goal: 'Turn this click flow into a macro'
     })
   })

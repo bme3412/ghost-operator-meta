@@ -24,6 +24,18 @@ export interface SiteProfile {
   url: string
 }
 
+/**
+ * Live reachability snapshot for the current target. Produced by the main
+ * process (Node fetch); renderers treat it as a hint and retry themselves.
+ */
+export interface TargetStatus {
+  id: string
+  name: string
+  url: string
+  reachable: boolean
+  checkedAt: string
+}
+
 /** The default site profile: Saltbreak at the configured target URL. */
 export function saltbreakProfile(url: string): SiteProfile {
   return { id: TARGET.id, name: TARGET.name, url }

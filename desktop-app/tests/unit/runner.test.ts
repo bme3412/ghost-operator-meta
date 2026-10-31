@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   evaluateCheck,
   resolvePlaceholders,
+  resolveSelectorPlaceholders,
   type DomQuery
 } from '../../src/main/runner/checks'
 import { createRunner, type Runner } from '../../src/main/runner/index'
@@ -99,6 +100,7 @@ function harness(overrides?: {
   const runner = createRunner({
     now: () => NOW,
     tick: () => Promise.resolve(),
+    getScopeId: () => 'saltbreak',
     getSkillVersion: (skillId) =>
       skillId === 'resolve-support-ticket'
         ? { skillName: 'Resolve support ticket', recipe: recipe() }
@@ -151,6 +153,105 @@ function harness(overrides?: {
   }
 }
 
+describe('runner control races', () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((res) => {
+      resolve = res
+    })
+    return { promise, resolve }
+  }
+
+  async function waitFor(cond: () => boolean): Promise<void> {
+    for (let i = 0; i < 1000; i++) {
+      if (cond()) return
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    throw new Error('Timed out waiting for condition.')
+  }
+
+  function controlledRunner(options: {
+    click?: () => Promise<void>
+    text?: (selector: string) => Promise<string | null>
+  }): { runner: Runner; clicks: string[] } {
+    const clicks: string[] = []
+    const runner = createRunner({
+      now: () => NOW,
+      tick: () => Promise.resolve(),
+      getScopeId: () => 'saltbreak',
+      getSkillVersion: () => ({ skillName: 's', recipe: recipe() }),
+      domQuery: {
+        visible: async () => true,
+        text: options.text ?? (async () => 'resolved'),
+        value: async () => null
+      },
+      domAct: {
+        click: async (selector) => {
+          clicks.push(selector)
+          await options.click?.()
+        },
+        fill: async () => undefined,
+        submit: async () => undefined,
+        goto: async () => undefined
+      },
+      persistRun: () => undefined,
+      onProgress: () => undefined,
+      highlight: () => undefined
+    })
+    return { runner, clicks }
+  }
+
+  it('keeps cancelled when stop lands during an in-flight step', async () => {
+    const gate = deferred<void>()
+    const { runner, clicks } = controlledRunner({ click: () => gate.promise })
+    const first = runner.startRun({ skillId: 's', mode: 'assisted', inputs: INPUTS })
+    await waitFor(() => clicks.length === 1)
+    runner.stopRun(first.runId)
+    gate.resolve()
+    const done = await settle(runner)
+    expect(done.status).toBe('cancelled')
+    expect(done.current?.id).toBe('click-ticket-resolve')
+  })
+
+  it('executes the step once across a pause/resume race', async () => {
+    const gate = deferred<void>()
+    const { runner, clicks } = controlledRunner({ click: () => gate.promise })
+    const first = runner.startRun({ skillId: 's', mode: 'assisted', inputs: INPUTS })
+    await waitFor(() => clicks.length === 1)
+    runner.pauseRun(first.runId)
+    runner.resumeRun(first.runId)
+    gate.resolve()
+    const done = await settle(runner)
+    expect(done.status).toBe('succeeded')
+    expect(clicks).toHaveLength(1)
+  })
+
+  it('rejects a second advance while one is in flight', async () => {
+    const gate = deferred<string | null>()
+    const { runner } = controlledRunner({ text: () => gate.promise })
+    const first = runner.startRun({ skillId: 's', mode: 'guide', inputs: INPUTS })
+    await runner.advanceRun(first.runId)
+    await runner.advanceRun(first.runId)
+    const pending = runner.advanceRun(first.runId)
+    await expect(runner.advanceRun(first.runId)).rejects.toThrow(/already in progress/)
+    gate.resolve('resolved')
+    const done = await pending
+    expect(done.status).toBe('succeeded')
+  })
+
+  it('rejects retry while a loop is driving the run', async () => {
+    const gate = deferred<void>()
+    const { runner, clicks } = controlledRunner({ click: () => gate.promise })
+    runner.startRun({ skillId: 's', mode: 'assisted', inputs: INPUTS })
+    await waitFor(() => clicks.length === 1)
+    const id = runner.getProgress()?.runId ?? ''
+    await expect(runner.retryRun(id)).rejects.toThrow(/driving/)
+    gate.resolve()
+    const done = await settle(runner)
+    expect(done.status).toBe('succeeded')
+  })
+})
+
 async function settle(runner: Runner): Promise<RunProgress> {
   for (let i = 0; i < 100; i++) {
     const progress = runner.getProgress()
@@ -168,6 +269,53 @@ async function settle(runner: Runner): Promise<RunProgress> {
 }
 
 const INPUTS = { ticketId: 'T-102' }
+
+describe('runner start gates', () => {
+  function runnerWith(recipe: SkillRecipe, scopeId = 'saltbreak'): Runner {
+    return createRunner({
+      now: () => NOW,
+      tick: () => Promise.resolve(),
+      getScopeId: () => scopeId,
+      getSkillVersion: () => ({ skillName: 's', recipe }),
+      domQuery: { visible: async () => true, text: async () => null, value: async () => null },
+      domAct: {
+        click: async () => undefined,
+        fill: async () => undefined,
+        submit: async () => undefined,
+        goto: async () => undefined
+      },
+      persistRun: () => undefined,
+      onProgress: () => undefined,
+      highlight: () => undefined
+    })
+  }
+
+  it('refuses a recipe that does not allow the live scope', () => {
+    const runner = runnerWith(recipe(), 'ebay-com')
+    expect(() =>
+      runner.startRun({ skillId: 's', mode: 'assisted', inputs: {} })
+    ).toThrow(/ebay-com/)
+    expect(runner.getProgress()).toBeNull()
+  })
+
+  it('refuses a recipe with an absolute-URL goto', () => {
+    const bad = recipe()
+    bad.steps[0]!.bindings = { action: 'goto', value: 'https://evil.example.com/' }
+    const runner = runnerWith(bad)
+    expect(() => runner.startRun({ skillId: 's', mode: 'assisted', inputs: {} })).toThrow(
+      /absolute URL/
+    )
+  })
+
+  it('refuses a verify step without checks', () => {
+    const bad = recipe()
+    bad.steps[2]!.checks = []
+    const runner = runnerWith(bad)
+    expect(() => runner.startRun({ skillId: 's', mode: 'guide', inputs: {} })).toThrow(
+      /without checks/
+    )
+  })
+})
 
 describe('runner', () => {
   it('runs assisted end to end with passing checks', async () => {
@@ -252,6 +400,26 @@ describe('placeholders', () => {
       '[data-semid="t-T-102"]'
     )
     expect(() => resolvePlaceholders('{{inputs.missing}}', INPUTS)).toThrow('Missing run input')
+  })
+
+  it('leaves ordinary values untouched in selector substitution', () => {
+    expect(
+      resolveSelectorPlaceholders('[data-semid="t-{{inputs.ticketId}}"]', INPUTS)
+    ).toBe('[data-semid="t-T-102"]')
+  })
+
+  it('keeps hostile values inside the attribute selector', () => {
+    const hostile = { ticketId: 'x"]} , body[data-x="' }
+    const selector = resolveSelectorPlaceholders('[data-semid="t-{{inputs.ticketId}}"]', hostile)
+    // The hostile quote is escaped, so it can't close the attribute early;
+    // only the template's own closing quote remains.
+    expect(selector).not.toContain('x"]')
+    expect(selector).toContain('\\"')
+    expect(selector.startsWith('[data-semid="t-')).toBe(true)
+    expect(selector.endsWith('"]')).toBe(true)
+    expect(() => resolveSelectorPlaceholders('{{inputs.missing}}', INPUTS)).toThrow(
+      'Missing run input'
+    )
   })
 })
 

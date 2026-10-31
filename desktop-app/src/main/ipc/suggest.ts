@@ -6,9 +6,9 @@ import {
   listSuggestions,
   listSuggestionsPolished
 } from '../suggest'
-import { getWindow } from '../windows/registry'
+import { navigatePanel } from '../windows/registry'
 import { broadcastLibraryChanged } from './broadcast'
-import { CHANNELS, EVENTS } from './channels'
+import { CHANNELS } from './channels'
 import { APP_ROLES, assertSenderRole } from './sender'
 
 export function registerSuggestHandlers(): void {
@@ -34,8 +34,7 @@ export function registerSuggestHandlers(): void {
     const { id } = SuggestIdRequest.parse(payload)
     const { prefill } = acceptSuggestion(id)
     broadcastLibraryChanged()
-    // Deliver the Teach prefill to the toolbar, mirroring the studioShow push.
-    getWindow('toolbar')?.webContents.send(EVENTS.teachPrefill, { goal: prefill.goal })
+    navigatePanel({ view: 'teach', goal: prefill.goal })
     return prefill
   })
 }

@@ -11,7 +11,7 @@ export const SuggestionEvidence = z.object({
 })
 export type SuggestionEvidence = z.infer<typeof SuggestionEvidence>
 
-/** A recording-mined proposal shown in the Studio Task map. */
+/** A recording-mined proposal shown on Home and in the Library map. */
 export const Suggestion = z.object({
   id: z.string().min(1),
   siteId: z.string().min(1),
@@ -48,13 +48,8 @@ export const SuggestIdRequest = z.object({
 })
 export type SuggestIdRequest = z.infer<typeof SuggestIdRequest>
 
-/** suggest:accept result: prefill for the toolbar Teach form. */
+/** suggest:accept result: prefill for the panel Teach view. */
 export interface SuggestAcceptPrefill {
   goal: string
   siteId: string
-}
-
-/** Payload of the ghost:teach-prefill push event. */
-export interface TeachPrefillPayload {
-  goal: string
 }

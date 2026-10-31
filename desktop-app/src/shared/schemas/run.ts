@@ -90,7 +90,7 @@ export const RunStepView = z.object({
 })
 export type RunStepView = z.infer<typeof RunStepView>
 
-/** Pushed to the sidecar on every run transition. Never steals focus. */
+/** Pushed to the panel on every run transition. Never steals focus. */
 export const RunProgress = z.object({
   runId: z.string().min(1),
   skillId: z.string().min(1),
@@ -111,7 +111,7 @@ export const StartRunRequest = z.object({
   skillId: z.string().min(1),
   version: z.number().int().positive().optional(),
   mode: RunMode,
-  inputs: z.record(z.string(), z.string())
+  inputs: z.record(z.string().max(64), z.string().max(500))
 })
 export type StartRunRequest = z.infer<typeof StartRunRequest>
 

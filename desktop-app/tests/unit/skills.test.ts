@@ -180,6 +180,20 @@ describe('skills store', () => {
     expect(getSkill(first.id)?.versions).toHaveLength(1)
   })
 
+  it('re-pins the creating site on draft edits, dropping client extras', () => {
+    const skill = saveDraft({
+      name: 'Resolve support ticket',
+      recipe: recipe(),
+      recordingIds: [],
+      providerId: 'fixture',
+      unresolved: []
+    })
+    const widened = recipe()
+    widened.allowedApplications = ['saltbreak', 'evil-site']
+    const edited = updateDraft({ skillId: skill.id, version: 1, recipe: widened })
+    expect(edited.versions[0]?.recipe.allowedApplications).toEqual(['saltbreak'])
+  })
+
   it('rejects draft edits that break the recipe', () => {
     const skill = saveDraft({
       name: 'Resolve support ticket',

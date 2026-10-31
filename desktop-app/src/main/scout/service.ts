@@ -12,7 +12,7 @@ import type {
   SiteMap
 } from '../../shared/schemas'
 import { TARGET, type SiteProfile } from '../../shared/target'
-import { broadcastLibraryChanged } from '../ipc/broadcast'
+import { broadcastLibraryChanged, sendToRoles } from '../ipc/broadcast'
 import { EVENTS } from '../ipc/channels'
 import { startPageLoadWait } from '../runner/wait'
 import { loadState, saveState } from '../store'
@@ -56,14 +56,16 @@ function defaultWindowFactory(siteUrl: string): ScoutWindowLike {
     show: false,
     webPreferences: {
       ...baseWebPreferences(),
+      // In-memory session: the hidden crawl never sees the operator's
+      // cookies, and scanned scripts can't touch authenticated state.
+      partition: 'ghost-scout',
       additionalArguments: ['--ghost-role=scout']
     }
   })
   // Origin lock plus popup/permission denial, same as the target window.
-  // The scout window is never registered, so the capture preload it inherits
-  // (remote pages always match the target-role URL fallback) is denied every
-  // guarded channel — including recorder:events — and scan traffic can never
-  // leak into a recording.
+  // The scout window is never registered, so its capture-only preload is
+  // denied every guarded channel — including recorder:events — and scan
+  // traffic can never leak into a recording.
   applyTargetGuards(window, () => siteUrl)
   return window as unknown as ScoutWindowLike
 }
@@ -139,9 +141,7 @@ function resolveSite(siteId?: string): SiteProfile {
 }
 
 function broadcast(progress: ScoutProgress): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    window.webContents.send(EVENTS.scoutProgress, progress)
-  }
+  sendToRoles(['panel'], EVENTS.scoutProgress, progress)
 }
 
 function updateProgress(

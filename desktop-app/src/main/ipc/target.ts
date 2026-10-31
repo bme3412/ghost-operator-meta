@@ -1,6 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { z } from 'zod'
-import { getTargetInfo, setTargetUrl } from '../target'
+import { getTargetInfo, getTargetStatus, setTargetUrl } from '../target'
+import { showTarget } from '../windows/registry'
 import { CHANNELS } from './channels'
 import { APP_ROLES, assertSenderRole } from './sender'
 
@@ -11,9 +12,17 @@ export function registerTargetHandlers(): void {
     assertSenderRole(event, CHANNELS.targetGetInfo, APP_ROLES)
     return getTargetInfo()
   })
-  ipcMain.handle(CHANNELS.targetSetUrl, (event: IpcMainInvokeEvent, payload: unknown) => {
+  ipcMain.handle(CHANNELS.targetSetUrl, async (event: IpcMainInvokeEvent, payload: unknown) => {
     assertSenderRole(event, CHANNELS.targetSetUrl, APP_ROLES)
     const { url } = SetUrlPayload.parse(payload)
     return setTargetUrl(url)
+  })
+  ipcMain.handle(CHANNELS.targetGetStatus, async (event: IpcMainInvokeEvent) => {
+    assertSenderRole(event, CHANNELS.targetGetStatus, APP_ROLES)
+    return getTargetStatus()
+  })
+  ipcMain.handle(CHANNELS.targetShow, (event: IpcMainInvokeEvent) => {
+    assertSenderRole(event, CHANNELS.targetShow, APP_ROLES)
+    showTarget()
   })
 }

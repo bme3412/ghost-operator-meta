@@ -1,9 +1,10 @@
 /** Renderer → main request channels (ipcRenderer.invoke). */
 export const CHANNELS = {
-  ping: 'ghost:ping',
-  echo: 'ghost:echo',
   targetGetInfo: 'target:get-info',
   targetSetUrl: 'target:set-url',
+  targetGetStatus: 'target:get-status',
+  targetShow: 'target:show',
+  panelSetLayout: 'panel:set-layout',
   recorderGetState: 'recorder:get-state',
   recorderStart: 'recorder:start',
   recorderPause: 'recorder:pause',
@@ -13,7 +14,6 @@ export const CHANNELS = {
   recorderNote: 'recorder:note',
   recorderFinish: 'recorder:finish',
   recorderCancel: 'recorder:cancel',
-  toolbarSetHeight: 'toolbar:set-height',
   recordingsList: 'recordings:list',
   recordingsGet: 'recordings:get',
   recordingsScreenshot: 'recordings:screenshot',
@@ -34,7 +34,6 @@ export const CHANNELS = {
   runsRetry: 'runs:retry',
   runsExplain: 'runs:explain',
   runsShowTarget: 'runs:show-target',
-  runsShowInStudio: 'runs:show-in-studio',
   runsList: 'runs:list',
   runsGet: 'runs:get',
   suggestList: 'suggest:list',
@@ -51,10 +50,9 @@ export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS]
 export const EVENTS = {
   highlight: 'ghost:highlight',
   recordingState: 'ghost:recording-state',
-  studioShow: 'ghost:studio-show',
+  panelNavigate: 'ghost:panel-navigate',
   runProgress: 'ghost:run-progress',
   libraryChanged: 'ghost:library-changed',
-  teachPrefill: 'ghost:teach-prefill',
   scoutProgress: 'ghost:scout-progress'
 } as const
 

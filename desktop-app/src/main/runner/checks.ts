@@ -1,3 +1,4 @@
+import { escapeCssIdentifier } from '../../shared/capture/selectors'
 import type { CheckRef, CheckResult } from '../../shared/schemas'
 
 /** Read-only view of the target page, used by every check. */
@@ -26,6 +27,26 @@ export function resolvePlaceholders(template: string, inputs: Record<string, str
   })
 }
 
+/**
+ * Placeholder substitution for CSS selectors. Substituted run-input values
+ * are identifier-escaped, so a value can neither close a quoted attribute
+ * (`[data-semid="…{{inputs.ticketId}}"]`) nor inject selector syntax:
+ * `escapeCssIdentifier` output is inert in both quoted-string and identifier
+ * positions. Values and expectations keep raw `resolvePlaceholders`.
+ */
+export function resolveSelectorPlaceholders(
+  template: string,
+  inputs: Record<string, string>
+): string {
+  return template.replace(PLACEHOLDER, (_match, key: string) => {
+    const value = inputs[key]
+    if (value === undefined) {
+      throw new Error(`Missing run input "${key}".`)
+    }
+    return escapeCssIdentifier(value)
+  })
+}
+
 function result(check: string, passed: boolean, observed: string, at: string): CheckResult {
   return { check, passed, observed, at }
 }
@@ -36,7 +57,7 @@ export async function evaluateCheck(ref: CheckRef, ctx: CheckContext): Promise<C
   switch (ref.name) {
     case 'target_visible': {
       if (!ref.selector) return result(ref.name, false, 'Check has no selector.', at)
-      const selector = resolvePlaceholders(ref.selector, ctx.inputs)
+      const selector = resolveSelectorPlaceholders(ref.selector, ctx.inputs)
       const found = await ctx.dom.visible(selector)
       return result(ref.name, found, found ? `${selector} is visible.` : `${selector} not found.`, at)
     }
@@ -44,7 +65,7 @@ export async function evaluateCheck(ref: CheckRef, ctx: CheckContext): Promise<C
       if (!ref.selector || ref.expected === undefined) {
         return result(ref.name, false, 'Check needs a selector and an expected value.', at)
       }
-      const selector = resolvePlaceholders(ref.selector, ctx.inputs)
+      const selector = resolveSelectorPlaceholders(ref.selector, ctx.inputs)
       const expected = resolvePlaceholders(ref.expected, ctx.inputs)
       const text = await ctx.dom.text(selector)
       if (text === null) return result(ref.name, false, `${selector} not found.`, at)
@@ -60,7 +81,7 @@ export async function evaluateCheck(ref: CheckRef, ctx: CheckContext): Promise<C
       if (!ref.selector || ref.expected === undefined) {
         return result(ref.name, false, 'Check needs a selector and an expected value.', at)
       }
-      const selector = resolvePlaceholders(ref.selector, ctx.inputs)
+      const selector = resolveSelectorPlaceholders(ref.selector, ctx.inputs)
       const expected = resolvePlaceholders(ref.expected, ctx.inputs)
       const value = await ctx.dom.value(selector)
       if (value === null) return result(ref.name, false, `${selector} not found.`, at)

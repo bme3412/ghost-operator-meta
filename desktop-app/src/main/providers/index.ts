@@ -3,7 +3,7 @@ import { compileFixture } from './fixture'
 import { generateMetaProposal } from './meta'
 
 /**
- * Default provider for the Studio and sidecar pickers. An explicit
+ * Default provider for draft generation and explanations. An explicit
  * GHOST_PROVIDER choice always wins; otherwise the Meta provider is
  * preferred when a model key is configured, and the deterministic offline
  * fixture is the fallback.

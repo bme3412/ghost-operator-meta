@@ -49,7 +49,7 @@ function truncate(text: string, max: number): string {
   return clean.length > max ? `${clean.slice(0, max)}…` : clean
 }
 
-/** One-line human summary of a captured event for the live toolbar feed. */
+/** One-line human summary of a captured event for the live recording feed. */
 function summarizeEvent(input: { type: string; targetLabel?: string; semanticId?: string; value?: string; recordIdentity?: string }, atMs: number): RecorderLastEvent {
   const verb = EVENT_VERBS[input.type] ?? 'Captured'
   const name =

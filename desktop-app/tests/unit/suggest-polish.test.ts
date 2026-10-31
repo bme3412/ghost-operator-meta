@@ -414,7 +414,7 @@ describe('suggest:list polish IPC', () => {
     ;(
       BrowserWindow as unknown as { getAllWindows: () => Array<{ webContents: { send: unknown } }> }
     ).getAllWindows = () => []
-    register('studio', fakeSender())
+    register('panel', fakeSender())
     register('target', fakeSender())
     registerSuggestHandlers()
   })
@@ -427,10 +427,10 @@ describe('suggest:list polish IPC', () => {
 
   it('keeps the plain array contract without polish', async () => {
     appendMinedSuggestions([suggestion()])
-    const studioSender = fakeSender()
-    register('studio', studioSender)
+    const panelSender = fakeSender()
+    register('panel', panelSender)
     const rows = (await handlers().get(CHANNELS.suggestList)!(
-      fakeEvent(studioSender),
+      fakeEvent(panelSender),
       {}
     )) as SuggestionType[]
     expect(rows).toHaveLength(1)
@@ -441,12 +441,12 @@ describe('suggest:list polish IPC', () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('offline')
     }))
-    const studioSender = fakeSender()
-    register('studio', studioSender)
+    const panelSender = fakeSender()
+    register('panel', panelSender)
     // No ambient key in unit tests; even with one, a dead transport still
     // resolves to heuristics plus a warning rather than rejecting.
     const result = (await handlers().get(CHANNELS.suggestList)!(
-      fakeEvent(studioSender),
+      fakeEvent(panelSender),
       { siteId: 'example-com', polish: true }
     )) as { suggestions: SuggestionType[]; warning: string | null }
     expect(result.suggestions).toEqual([suggestion()])

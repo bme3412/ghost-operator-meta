@@ -9,8 +9,16 @@ import {
 import { stepOutcomes } from '../../../shared/skills/branches'
 import { countReviewItems } from '../../../shared/skills/review'
 import { Button } from '../components/Button'
+import { friendlyError } from '../lib/errors'
+import { checkLabel, humanizeKey, stepLabel } from '../lib/humanize'
 
-export function SkillsSection({ focusId }: { focusId: string | null }): React.JSX.Element {
+export function SkillsSection({
+  focusId,
+  onNavigate
+}: {
+  focusId: string | null
+  onNavigate?: (section: 'recordings' | 'skills' | 'runs' | 'map') => void
+}): React.JSX.Element {
   const [summaries, setSummaries] = useState<SkillSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(focusId)
   const [skill, setSkill] = useState<Skill | null>(null)
@@ -29,7 +37,7 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
       setError(null)
     } else {
       setRecipeErrors(null)
-      setError(String(err))
+      setError(friendlyError(err))
     }
   }, [])
 
@@ -42,7 +50,7 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
     window.ghost.skills
       .list()
       .then(setSummaries)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [])
 
   const refreshSkill = useCallback(
@@ -60,7 +68,7 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
             )
           }
         })
-        .catch((err: unknown) => setError(String(err)))
+        .catch((err: unknown) => setError(friendlyError(err)))
     },
     []
   )
@@ -152,9 +160,16 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
   const reviewCount = record ? countReviewItems(record.recipe, record.unresolved) : 0
 
   return (
-    <div className="studio-split">
-      <div className="studio-list" role="listbox" aria-label="Skills">
-        {summaries.length === 0 && <p className="muted">No skills yet. Compile a recording.</p>}
+    <div className="library-split">
+      <div className="library-list" role="listbox" aria-label="Skills">
+        {summaries.length === 0 && (
+          <div>
+            <p className="muted">No skills yet. Compile a recording to create one.</p>
+            <Button data-semid="empty-open-recordings" onClick={() => onNavigate?.('recordings')}>
+              Go to recordings
+            </Button>
+          </div>
+        )}
         {summaries.map((summary) => (
           <button
             key={summary.id}
@@ -172,7 +187,7 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
           </button>
         ))}
       </div>
-      <div className="studio-detail">
+      <div className="library-detail">
         {error !== null && (
           <p className="alert-error" role="alert">
             {error}
@@ -211,8 +226,7 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
             {record && (
               <>
                 <p className="muted">
-                  Provider: {record.providerId} · Created{' '}
-                  {new Date(record.createdAt).toLocaleString()}
+                  Created {new Date(record.createdAt).toLocaleString()}
                   {record.recordingIds.length > 0 &&
                     ` · Evidence: ${record.recordingIds.join(', ')}`}
                 </p>
@@ -228,42 +242,29 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
                   <ol className="steps-list" data-semid="skill-steps">
                     {record.recipe.steps.map((step) => (
                       <li key={step.id}>
-                        <strong>{step.id}</strong> [{step.kind}]
-                        {step.goal ? ` — ${step.goal}` : ''}
+                        <strong>{stepLabel(step)}</strong>
+                        {step.kind === 'review' && (
+                          <span className="muted"> — needs your review on each run</span>
+                        )}
+                        <div className="muted">{step.id}</div>
                         {Object.keys(step.bindings).length > 0 && (
                           <div className="muted">
                             Binds:{' '}
                             {Object.entries(step.bindings)
-                              .map(([k, v]) => `${k} ← ${v}`)
+                              .map(([k, v]) => `${humanizeKey(k)} ← ${v}`)
                               .join(', ')}
                           </div>
                         )}
                         {step.checks.length > 0 && (
                           <div className="muted">
-                            Checks: {step.checks.map((c) => c.name).join(', ')}
+                            Checks:{' '}
+                            {step.checks.map((c) => checkLabel(c.name, c.expected)).join('; ')}
                           </div>
                         )}
                         {step.why && <div className="muted">Why: {step.why}</div>}
                       </li>
                     ))}
                   </ol>
-                </section>
-                <section aria-label="Branches">
-                  <h3>Branches</h3>
-                  <ul className="steps-list" data-semid="skill-branches">
-                    {record.recipe.steps.map((step) => (
-                      <li key={step.id}>
-                        <strong>{step.id}</strong>
-                        <ul>
-                          {stepOutcomes(step).map((outcome) => (
-                            <li key={outcome} className="muted">
-                              {outcome}
-                            </li>
-                          ))}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
                 </section>
                 <section aria-label="Instructions">
                   <h3>Instructions</h3>
@@ -276,18 +277,39 @@ export function SkillsSection({ focusId }: { focusId: string | null }): React.JS
                     onChange={(event) => setInstructions(event.target.value)}
                   />
                 </section>
-                <section aria-label="Recipe JSON">
-                  <h3>Recipe JSON</h3>
-                  <textarea
-                    className="code-area"
-                    rows={12}
-                    data-semid="skill-recipe-json"
-                    value={recipeJson}
-                    disabled={!isDraft}
-                    spellCheck={false}
-                    onChange={(event) => setRecipeJson(event.target.value)}
-                  />
-                </section>
+                <details className="advanced">
+                  <summary>Advanced</summary>
+                  <p className="muted">Drafted with provider: {record.providerId}</p>
+                  <section aria-label="Branches">
+                    <h3>Branches</h3>
+                    <ul className="steps-list" data-semid="skill-branches">
+                      {record.recipe.steps.map((step) => (
+                        <li key={step.id}>
+                          <strong>{step.id}</strong>
+                          <ul>
+                            {stepOutcomes(step).map((outcome) => (
+                              <li key={outcome} className="muted">
+                                {outcome}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                  <section aria-label="Recipe JSON">
+                    <h3>Recipe JSON</h3>
+                    <textarea
+                      className="code-area"
+                      rows={12}
+                      data-semid="skill-recipe-json"
+                      value={recipeJson}
+                      disabled={!isDraft}
+                      spellCheck={false}
+                      onChange={(event) => setRecipeJson(event.target.value)}
+                    />
+                  </section>
+                </details>
                 {reviewCount > 0 && (
                   <p className="alert-warn" role="status" data-semid="guided-run-nudge">
                     Contains {reviewCount} review item{reviewCount === 1 ? '' : 's'} — guided

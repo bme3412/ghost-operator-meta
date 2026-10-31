@@ -644,7 +644,7 @@ describe('scout IPC', () => {
     ;(
       BrowserWindow as unknown as { getAllWindows: () => Array<{ webContents: { send: unknown } }> }
     ).getAllWindows = () => []
-    register('studio', fakeSender())
+    register('panel', fakeSender())
     register('target', fakeSender())
     registerScoutHandlers()
   })
@@ -663,9 +663,9 @@ describe('scout IPC', () => {
   })
 
   it('reports status and cancels from app windows', async () => {
-    const studioSender = fakeSender()
-    register('studio', studioSender)
-    const event = fakeEvent(studioSender)
+    const panelSender = fakeSender()
+    register('panel', panelSender)
+    const event = fakeEvent(panelSender)
     const map = handlers()
     expect(await map.get(CHANNELS.scoutStatus)!(event)).toMatchObject({ running: false })
     expect(await map.get(CHANNELS.scoutCancel)!(event)).toMatchObject({ running: false })

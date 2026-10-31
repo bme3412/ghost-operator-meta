@@ -9,6 +9,7 @@ import type {
   Suggestion
 } from '../../../shared/schemas'
 import { Button } from '../components/Button'
+import { friendlyError } from '../lib/errors'
 import { SiteMapSection } from './SiteMapSection'
 
 const X_MAIN = 40
@@ -39,7 +40,7 @@ export function MapSection(): React.JSX.Element {
     window.ghost.suggest
       .list()
       .then((rows) => setSuggestions(rows.filter((row) => row.status === 'new')))
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [])
 
   useEffect(() => {
@@ -51,15 +52,15 @@ export function MapSection(): React.JSX.Element {
     window.ghost.suggest
       .dismiss(id)
       .then(refreshSuggestions)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }
 
-  // Accept pushes a Teach prefill to the toolbar; the list refreshes off libraryChanged.
+  // Accept navigates the panel to Teach with the goal prefilled.
   const teachSuggestion = (id: string): void => {
     window.ghost.suggest
       .accept(id)
       .then(refreshSuggestions)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }
 
   // The default provider is meta exactly when a model key is configured
@@ -82,7 +83,7 @@ export function MapSection(): React.JSX.Element {
         setSuggestions(result.suggestions.filter((row) => row.status === 'new'))
         setPolishWarning(result.warning)
       })
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
       .finally(() => setPolishing(false))
   }
 
@@ -93,11 +94,11 @@ export function MapSection(): React.JSX.Element {
         setSummaries(rows)
         setSkillId((current) => current || rows[0]?.id || '')
       })
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
     window.ghost.runs
       .list()
       .then(setRuns)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [])
 
   useEffect(() => {
@@ -109,7 +110,7 @@ export function MapSection(): React.JSX.Element {
         setSkill(next)
         setVersion(next?.activeVersion ?? next?.versions[next.versions.length - 1]?.version ?? null)
       })
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [skillId])
 
   const record = skill?.versions.find((v) => v.version === version) ?? null
@@ -119,7 +120,7 @@ export function MapSection(): React.JSX.Element {
     if (!record) return
     Promise.all(record.recordingIds.map((id) => window.ghost.recordings.get(id)))
       .then((found) => setRecordings(found.filter((r): r is Recording => r !== null)))
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [record?.version, record?.recordingIds.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const graph = useMemo(() => {

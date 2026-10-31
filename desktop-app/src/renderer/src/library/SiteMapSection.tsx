@@ -4,6 +4,7 @@ import '@xyflow/react/dist/style.css'
 import type { ScoutProgress, ScoutStatus, SiteMap } from '../../../shared/schemas'
 import { scoutHrefPath } from '../../../shared/scout'
 import { Button } from '../components/Button'
+import { friendlyError } from '../lib/errors'
 
 const SITE_X = 40
 const SITE_COL = 300
@@ -43,7 +44,7 @@ function progressText(progress: ScoutProgress): string {
   return `Scanning ${progress.currentPath} — ${progress.pagesDone}/${progress.pagesTotal} pages`
 }
 
-/** Site mode of the Studio Task map: the persisted scout page graph plus scan controls. */
+/** Site mode of the Library Task map: the persisted scout page graph plus scan controls. */
 export function SiteMapSection(): React.JSX.Element {
   const [status, setStatus] = useState<ScoutStatus | null>(null)
   const [siteName, setSiteName] = useState('')
@@ -53,7 +54,7 @@ export function SiteMapSection(): React.JSX.Element {
     window.ghost.scout
       .getStatus()
       .then(setStatus)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }, [])
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export function SiteMapSection(): React.JSX.Element {
     window.ghost.target
       .getInfo()
       .then((info) => setSiteName(info.name))
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
     // Progress pushes re-read status (cheap, local); library changes pick up
     // the persisted map and mined suggestions after a scan completes.
     const offProgress = window.ghost.scout.onProgress(refresh)
@@ -77,14 +78,14 @@ export function SiteMapSection(): React.JSX.Element {
     window.ghost.scout
       .start()
       .then(setStatus)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }
 
   const cancel = (): void => {
     window.ghost.scout
       .cancel()
       .then(setStatus)
-      .catch((err: unknown) => setError(String(err)))
+      .catch((err: unknown) => setError(friendlyError(err)))
   }
 
   const graph = useMemo(

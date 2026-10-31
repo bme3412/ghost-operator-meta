@@ -2,7 +2,7 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { ProviderId, RunIdPayload, StartRunRequest } from '../../shared/schemas'
 import { explainCurrentStep, getRunner } from '../runner/service'
 import { getRun, listRuns } from '../store'
-import { focusSidecar, getWindow, openStudioForRun } from '../windows/registry'
+import { getWindow, navigatePanel } from '../windows/registry'
 import { CHANNELS, EVENTS } from './channels'
 import { APP_ROLES, assertSenderRole } from './sender'
 
@@ -15,7 +15,7 @@ export function registerRunHandlers(): void {
     assertSenderRole(event, CHANNELS.runsStart, APP_ROLES)
     const request = StartRunRequest.parse(payload)
     const progress = runner().startRun(request)
-    focusSidecar()
+    navigatePanel({ view: 'running', runId: progress.runId })
     return progress
   })
 
@@ -58,11 +58,6 @@ export function registerRunHandlers(): void {
     assertSenderRole(event, CHANNELS.runsExplain, APP_ROLES)
     const { runId, providerId } = ExplainPayload.parse(payload)
     return explainCurrentStep(runId, providerId)
-  })
-
-  ipcMain.handle(CHANNELS.runsShowInStudio, (event: IpcMainInvokeEvent, payload: unknown) => {
-    assertSenderRole(event, CHANNELS.runsShowInStudio, APP_ROLES)
-    openStudioForRun(RunIdPayload.parse(payload).runId)
   })
 
   ipcMain.handle(CHANNELS.runsList, (event: IpcMainInvokeEvent) => {

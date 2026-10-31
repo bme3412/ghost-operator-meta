@@ -24,6 +24,26 @@ function demonstratedIdentity(events: RecordingEvent[]): string | null {
   return null
 }
 
+const ELEMENT_LABELS: Array<[RegExp, string]> = [
+  [/^ticket-resolve-/, 'Resolved for the ticket'],
+  [/^nav-staff-inbox$/, 'the support inbox'],
+  [/^nav-staff$/, 'Staff']
+]
+
+/**
+ * Plain-language label for a demonstrated element ("ticket-resolve-t-101" →
+ * "Resolved for the ticket"). Trailing record-identity segments are dropped
+ * so the label reads the same on every run.
+ */
+function elementLabel(semid: string): string {
+  for (const [pattern, label] of ELEMENT_LABELS) {
+    if (pattern.test(semid)) return label
+  }
+  const words = semid.split('-').filter((word) => word.length > 1 && !/^\d+$/.test(word))
+  const label = (words.length > 0 ? words : [semid]).join(' ')
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
 /**
  * Deterministic offline proposal generator.
  * Maps demonstrated DOM events to replayable target-window steps and
@@ -103,7 +123,7 @@ export function compileFixture(recording: Recording): Proposal {
       case 'click': {
         if (!event.selector) {
           unresolved.push(
-            `A click on "${event.targetLabel ?? event.targetRole ?? 'an element'}" has no stable selector; it became a review step.`
+            `A click on "${event.targetLabel ?? event.targetRole ?? 'an element'}" couldn't be matched reliably, so it needs your review before each run.`
           )
           push(
             {
@@ -127,7 +147,7 @@ export function compileFixture(recording: Recording): Proposal {
             id: `click-${slug(semid)}`,
             kind: 'computer_task',
             applicationId: scope,
-            goal: `Click ${semid}.`,
+            goal: `Click ${elementLabel(semid)}.`,
             why: 'This click was part of the demonstration.',
             expected: 'The target responds as demonstrated.',
             ...(clickCandidates ? { selectorCandidates: clickCandidates } : {}),
@@ -164,7 +184,9 @@ export function compileFixture(recording: Recording): Proposal {
       case 'input_commit':
       case 'select': {
         if (!event.selector) {
-          unresolved.push('An input without a stable selector became a review step.')
+          unresolved.push(
+            "An input couldn't be matched reliably, so it needs your review before each run."
+          )
           push(
             {
               id: 'review-input',
@@ -187,7 +209,7 @@ export function compileFixture(recording: Recording): Proposal {
             id: `fill-${slug(semid)}`,
             kind: 'computer_task',
             applicationId: scope,
-            goal: `Fill ${semid}.`,
+            goal: `Fill ${elementLabel(semid)}.`,
             ...(fillCandidates ? { selectorCandidates: fillCandidates } : {}),
             bindings: { action: 'fill', selector: fillSelector, value: event.value ?? '' },
             dataRefs: [],
@@ -197,7 +219,7 @@ export function compileFixture(recording: Recording): Proposal {
         )
         if (event.value) {
           unresolved.push(
-            `Fill replays the demonstrated value "${event.value}"; edit the binding to parameterize it.`
+            `This step reuses "${event.value}" exactly as demonstrated — it won't adapt to each case yet.`
           )
         }
         return
@@ -208,7 +230,7 @@ export function compileFixture(recording: Recording): Proposal {
         const prior = lastClickBefore(index)
         if (prior && prior.recordIdentity && prior.recordIdentity === event.recordIdentity) return
         if (!event.selector) {
-          unresolved.push('A submit without a stable hook was skipped.')
+          unresolved.push("A form submission couldn't be matched reliably, so it was skipped.")
           return
         }
         const submitSelector = substitute(event.selector)
@@ -218,7 +240,7 @@ export function compileFixture(recording: Recording): Proposal {
             id: `submit-${slug(event.semanticId ?? 'form')}`,
             kind: 'computer_task',
             applicationId: scope,
-            goal: `Submit ${event.semanticId ?? 'the form'}.`,
+            goal: `Submit ${event.semanticId ? elementLabel(event.semanticId) : 'the form'}.`,
             ...(submitCandidates ? { selectorCandidates: submitCandidates } : {}),
             bindings: { action: 'submit', selector: submitSelector },
             dataRefs: [],
@@ -235,7 +257,9 @@ export function compileFixture(recording: Recording): Proposal {
 
   const gapCount = events.filter((e) => e.type === 'gap').length
   if (gapCount > 0) {
-    unresolved.push(`The demonstration has ${gapCount} pause gap(s); review the steps around them.`)
+    unresolved.push(
+      `You paused ${gapCount} time${gapCount === 1 ? '' : 's'} during the demonstration; check the steps around each pause.`
+    )
   }
   if (steps.length === 0) {
     unresolved.push('No replayable actions were demonstrated.')

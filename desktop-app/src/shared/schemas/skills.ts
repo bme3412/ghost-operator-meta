@@ -11,7 +11,7 @@ export const SkillVersionRecord = z.object({
   status: SkillStatus,
   recordingIds: z.array(z.string()).default([]),
   providerId: z.string().min(1),
-  unresolved: z.array(z.string()).default([]),
+  unresolved: z.array(z.string().max(1000)).max(50).default([]),
   createdAt: z.string().min(1)
 })
 export type SkillVersionRecord = z.infer<typeof SkillVersionRecord>
@@ -66,7 +66,7 @@ export const SaveDraftRequest = z.object({
   recipe: SkillRecipe,
   recordingIds: z.array(z.string()).default([]),
   providerId: z.string().min(1),
-  unresolved: z.array(z.string()).default([])
+  unresolved: z.array(z.string().max(1000)).max(50).default([])
 })
 export type SaveDraftRequest = z.infer<typeof SaveDraftRequest>
 
