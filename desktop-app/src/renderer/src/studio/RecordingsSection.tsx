@@ -1,0 +1,233 @@
+import { useCallback, useEffect, useState } from 'react'
+import type { CompileResult, Proposal, ProviderId, Recording } from '../../../shared/schemas'
+import type { RecordingSummary } from '../../../shared/schemas'
+import { Button } from '../components/Button'
+import { Screenshot } from './Screenshot'
+
+export function RecordingsSection({
+  focusId,
+  onSkillSaved
+}: {
+  focusId: string | null
+  onSkillSaved: (skillId: string) => void
+}): React.JSX.Element {
+  const [summaries, setSummaries] = useState<RecordingSummary[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(focusId)
+  const [detail, setDetail] = useState<Recording | null>(null)
+  const [providerId, setProviderId] = useState<ProviderId>('fixture')
+  const [compile, setCompile] = useState<CompileResult | null>(null)
+  const [skillName, setSkillName] = useState('Resolve support ticket')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refreshList = useCallback(() => {
+    window.ghost.recordings
+      .list()
+      .then(setSummaries)
+      .catch((err: unknown) => setError(String(err)))
+  }, [])
+
+  useEffect(() => {
+    refreshList()
+    return window.ghost.library.onChanged(refreshList)
+  }, [refreshList])
+  useEffect(() => {
+    if (focusId) setSelectedId(focusId)
+  }, [focusId])
+
+  useEffect(() => {
+    setDetail(null)
+    setCompile(null)
+    if (!selectedId) return
+    window.ghost.recordings
+      .get(selectedId)
+      .then(setDetail)
+      .catch((err: unknown) => setError(String(err)))
+  }, [selectedId])
+
+  const generate = (): void => {
+    if (!selectedId) return
+    setBusy(true)
+    setError(null)
+    window.ghost.skills
+      .compile(selectedId, providerId)
+      .then(setCompile)
+      .catch((err: unknown) => setError(String(err)))
+      .finally(() => setBusy(false))
+  }
+
+  const save = (proposal: Proposal): void => {
+    if (!selectedId) return
+    setBusy(true)
+    setError(null)
+    window.ghost.skills
+      .saveDraft({
+        name: skillName,
+        recipe: proposal.recipe,
+        recordingIds: [selectedId],
+        providerId,
+        unresolved: proposal.unresolved
+      })
+      .then((skill) => onSkillSaved(skill.id))
+      .catch((err: unknown) => setError(String(err)))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <div className="studio-split">
+      <div className="studio-list" role="listbox" aria-label="Recordings">
+        {summaries.length === 0 && <p className="muted">No recordings yet. Click Teach.</p>}
+        {summaries.map((summary) => (
+          <button
+            key={summary.id}
+            role="option"
+            aria-selected={summary.id === selectedId}
+            className={`list-item${summary.id === selectedId ? ' selected' : ''}`}
+            data-semid={`recording-${summary.id}`}
+            onClick={() => setSelectedId(summary.id)}
+          >
+            <strong>{summary.goal}</strong>
+            <span className="muted">
+              {summary.eventCount} events · {summary.noteCount} notes ·{' '}
+              {new Date(summary.startedAt).toLocaleString()}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="studio-detail">
+        {error !== null && (
+          <p className="alert-error" role="alert">
+            {error}
+          </p>
+        )}
+        {!detail && <p className="muted">Select a recording to inspect its evidence.</p>}
+        {detail && (
+          <article>
+            <h2 data-semid="recording-heading">{detail.goal}</h2>
+            <p className="muted">
+              {detail.id} · {detail.applicationScope} · {detail.events.length} events
+            </p>
+            {detail.notes.length > 0 && (
+              <section aria-label="Notes">
+                <h3>Notes</h3>
+                <ul>
+                  {detail.notes.map((note, index) => (
+                    <li key={`${note.sequence}-${index}`}>
+                      <span className="muted">@{note.sequence}</span> {note.text}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            <section aria-label="Events">
+              <h3>Events</h3>
+              <table className="cases-table" data-semid="recording-events">
+                <thead>
+                  <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Target</th>
+                    <th scope="col">Value</th>
+                    <th scope="col">Shot</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.events.map((event) => (
+                    <tr key={event.sequence}>
+                      <td>{event.sequence}</td>
+                      <td>{event.type}</td>
+                      <td>{event.semanticId ?? event.targetLabel ?? '—'}</td>
+                      <td>{event.value ?? '—'}</td>
+                      <td>
+                        {event.screenshotRef ? (
+                          <Screenshot shotRef={event.screenshotRef} alt={`Event ${event.sequence}`} />
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+            <section aria-label="Generate procedure" className="card">
+              <h3>Draft procedure</h3>
+              <div className="field">
+                <label htmlFor="provider">Provider</label>
+                <select
+                  id="provider"
+                  data-semid="compile-provider"
+                  value={providerId}
+                  onChange={(event) => setProviderId(event.target.value as ProviderId)}
+                >
+                  <option value="fixture">Fixture (offline, deterministic)</option>
+                  <option value="meta">Meta (requires MODEL_API_KEY)</option>
+                </select>
+                <Button
+                  variant="primary"
+                  data-semid="generate-draft"
+                  disabled={busy}
+                  onClick={generate}
+                >
+                  {busy ? 'Working…' : 'Generate draft procedure'}
+                </Button>
+              </div>
+              {compile && !compile.ok && (
+                <ul className="alert-error" role="alert">
+                  {compile.errors.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              )}
+              {compile?.ok && (
+                <div data-semid="proposal-preview">
+                  {compile.proposal.unresolved.length > 0 && (
+                    <ul className="alert-warn" data-semid="proposal-unresolved">
+                      {compile.proposal.unresolved.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <h4>Parameter bindings</h4>
+                  <ul data-semid="proposal-bindings">
+                    {Object.entries(compile.proposal.demonstrated).map(([shown, path]) => (
+                      <li key={shown}>
+                        {shown} becomes <code>{path}</code>
+                      </li>
+                    ))}
+                  </ul>
+                  <h4>Steps</h4>
+                  <ol data-semid="proposal-steps">
+                    {compile.proposal.recipe.steps.map((step) => (
+                      <li key={step.id}>
+                        <strong>{step.id}</strong> [{step.kind}]{step.goal ? ` — ${step.goal}` : ''}
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="field">
+                    <label htmlFor="skill-name">Skill name</label>
+                    <input
+                      id="skill-name"
+                      data-semid="skill-name"
+                      type="text"
+                      value={skillName}
+                      onChange={(event) => setSkillName(event.target.value)}
+                    />
+                    <Button
+                      variant="primary"
+                      data-semid="save-draft"
+                      disabled={busy}
+                      onClick={() => save(compile.proposal)}
+                    >
+                      Save as draft skill
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </section>
+          </article>
+        )}
+      </div>
+    </div>
+  )
+}

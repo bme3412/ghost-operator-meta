@@ -1,0 +1,1 @@
+{"dependencies":{"zod":"^3.23.8"},"devDependencies":{"typescript":"^5.6.3"},"exports":{".":"./dist/index.js"},"main":"./dist/index.js","name":"@atlas/contracts","private":true,"scripts":{"build":"tsc","typecheck":"tsc --noEmit"},"types":"./dist/index.d.ts","version":"0.1.0"}

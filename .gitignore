@@ -1,0 +1,18 @@
+# Regenerable caches and build output only. Source lives in web-app/ and desktop-app/.
+node_modules/
+.pnpm-store/
+.playwright-browsers/
+.next/
+apps/*/.next/
+dist/
+out/
+release/
+.local-state/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
