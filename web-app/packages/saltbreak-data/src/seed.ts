@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { getDb } from './db';
+import { tidepayFee } from './payments';
 
 interface Fixture {
   sku: string;
@@ -25,7 +26,7 @@ const FIXTURES: Fixture[] = [
     color: 'Seafoam',
     dimensionsValue: '96 x 22 x 3',
     dimensionsUnit: 'in',
-    description: 'Stable foam longboard for beginners and small days.',
+    description: 'Stable foam longboard for beginners and small days. Volume approx 80 L — floats riders up to about 200 lb.',
     priceCents: 34900,
     spec: 'Supplier spec: Drift 8\'0" foam surfboard, soft-top construction, thruster fin set included.',
     live: true,
@@ -265,6 +266,81 @@ const BACKFILL_TICKETS: BackfillTicket[] = [
 ];
 
 /**
+ * Pin scenario orders to known lines (the backfill RNG leaves these random)
+ * and settle three October TidePay payouts. Pins re-apply deterministically;
+ * payouts seed once. PO-1043 carries 14 charges including a duplicated $45
+ * towel charge on SB-8014; PO-1044 lacks the $45 partial refund promised in
+ * T-104; PO-1045 is clean.
+ */
+function seedPayouts(db: ReturnType<typeof getDb>): { payouts: number; paymentLines: number } {
+  const pins: Array<{
+    number: string;
+    name?: string;
+    email?: string;
+    items: Array<[string, string, number, number]>;
+  }> = [
+    { number: 'SB-8014', name: 'Ellis Avery', email: 'ellis@example.com', items: [['SB-TOWEL-003', 'Côte Beach Towel', 1, 4500]] },
+    { number: 'SB-8026', name: 'Logan Pike', email: 'logan@example.com', items: [['SB-PADDLE-004', 'Carbon SUP Paddle', 1, 12900], ['SB-ACC-008', 'Wax and Leash Kit', 1, 3400]] },
+    { number: 'SB-8005', items: [['SB-TOWEL-003', 'Côte Beach Towel', 1, 4500]] },
+    { number: 'SB-8010', items: [['SB-PADDLE-004', 'Carbon SUP Paddle', 1, 12900]] },
+    { number: 'SB-8020', items: [["SB-BOARD-001", "Drift 8'0\" Foam Surfboard", 1, 34900]] },
+    { number: 'SB-8006', items: [['SB-TOWEL-003', 'Côte Beach Towel', 1, 4500]] },
+    { number: 'SB-8011', items: [['SB-PADDLE-004', 'Carbon SUP Paddle', 1, 12900]] },
+    { number: 'SB-8021', items: [["SB-BOARD-001", "Drift 8'0\" Foam Surfboard", 1, 34900]] },
+  ];
+  for (const pin of pins) {
+    const row = db.prepare('SELECT id FROM orders WHERE number = ?').get(pin.number) as { id: number } | undefined;
+    if (!row) continue;
+    if (pin.name && pin.email) db.prepare('UPDATE orders SET customer_name = ?, email = ? WHERE id = ?').run(pin.name, pin.email, row.id);
+    db.prepare('DELETE FROM order_items WHERE order_id = ?').run(row.id);
+    const put = db.prepare('INSERT INTO order_items (order_id, sku, title, qty, unit_price_cents) VALUES (?, ?, ?, ?, ?)');
+    for (const [sku, title, qty, price] of pin.items) put.run(row.id, sku, title, qty, price);
+  }
+
+  const existing = db.prepare('SELECT COUNT(*) AS c FROM payouts').get() as { c: number };
+  if (Number(existing.c) > 0) return { payouts: 0, paymentLines: 0 };
+  const putLine = db.prepare(
+    'INSERT INTO payment_lines (payout_id, order_number, type, amount_cents, fee_cents, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  let lines = 0;
+  const charge = (payout: string, order: string, gross: number, day: string): void => {
+    putLine.run(payout, order, 'charge', gross, tidepayFee(gross), `${day}T12:00:00.000Z`);
+    lines += 1;
+  };
+  const p43: Array<[string, number, string]> = [
+    ['SB-1000', 3400, '2026-10-01'],
+    ['SB-1001', 4500, '2026-10-01'],
+    ['SB-1001', 4500, '2026-10-02'],
+    ['SB-1002', 20000, '2026-10-02'],
+    ['SB-1002', 14900, '2026-10-03'],
+    ['SB-1003', 12900, '2026-10-03'],
+    ['SB-1003', 4500, '2026-10-04'],
+    ['SB-1005', 4500, '2026-10-04'],
+    ['SB-1006', 20000, '2026-10-05'],
+    ['SB-1006', 14900, '2026-10-05'],
+    ['SB-8014', 4500, '2026-10-06'],
+    ['SB-8026', 12900, '2026-10-06'],
+    ['SB-8026', 3400, '2026-10-06'],
+    ['SB-8014', 4500, '2026-10-06'],
+  ];
+  for (const [order, gross, day] of p43) charge('PO-1043', order, gross, day);
+  for (const [order, gross] of [['SB-8005', 4500], ['SB-8010', 12900], ['SB-8020', 34900]] as Array<[string, number]>) {
+    charge('PO-1044', order, gross, '2026-10-12');
+  }
+  for (const [order, gross] of [['SB-8006', 4500], ['SB-8011', 12900], ['SB-8021', 34900]] as Array<[string, number]>) {
+    charge('PO-1045', order, gross, '2026-10-19');
+  }
+  const putPayout = db.prepare('INSERT INTO payouts (id, arrives_at, gross_cents, fee_cents, net_cents) VALUES (?, ?, ?, ?, ?)');
+  for (const [id, arrives] of [['PO-1043', '2026-10-07'], ['PO-1044', '2026-10-14'], ['PO-1045', '2026-10-21']]) {
+    const sums = db.prepare(
+      'SELECT COALESCE(SUM(amount_cents),0) AS g, COALESCE(SUM(fee_cents),0) AS f, COALESCE(SUM(amount_cents - fee_cents),0) AS n FROM payment_lines WHERE payout_id = ?'
+    ).get(id) as { g: number; f: number; n: number };
+    putPayout.run(id, arrives, sums.g, sums.f, sums.n);
+  }
+  return { payouts: 3, paymentLines: lines };
+}
+
+/**
  * Thirty days of business history: orders, tickets, stock movements, and
  * events. Gives Atlas real patterns (weekend spikes, repeat tote questions,
  * a refund request, overdue threads) instead of an empty past.
@@ -426,6 +502,17 @@ export function seed(): Record<string, number> {
   putPromo.run('PROMO-2', 'HARBOR10', 'Harbor days: 10% off everything', daysAgo(3), daysAgo(-11));
 
   seedHistory(db, now, FIXTURES);
+
+  // Databases seeded before the volume fact keep working: patch the one description.
+  db.prepare('UPDATE products SET description = ? WHERE sku = ? AND description = ?').run(
+    'Stable foam longboard for beginners and small days. Volume approx 80 L — floats riders up to about 200 lb.',
+    'SB-BOARD-001',
+    'Stable foam longboard for beginners and small days.'
+  );
+
+  const payoutCounts = seedPayouts(db);
+  counts.payouts = payoutCounts.payouts;
+  counts.paymentLines = payoutCounts.paymentLines;
 
   const putCustomer = db.prepare('INSERT OR IGNORE INTO customers (name, email, created_at) VALUES (?, ?, ?)');
   for (const c of [

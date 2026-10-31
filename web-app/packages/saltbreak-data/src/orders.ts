@@ -62,6 +62,13 @@ export function getOrder(id: number): Order | null {
   return toOrder(row, itemsFor(num(row.id)));
 }
 
+/** Look an order up by its public number (SB-8014); null when unknown. */
+export function getOrderByNumber(number: string): Order | null {
+  const row = getDb().prepare('SELECT * FROM orders WHERE number = ?').get(number) as Row | undefined;
+  if (!row) return null;
+  return toOrder(row, itemsFor(num(row.id)));
+}
+
 export interface CheckoutLine {
   sku: string;
   qty: number;
@@ -253,4 +260,37 @@ export function addReply(ticketId: string, body: string): { ok: boolean; message
 export function setTicketStatus(id: string, status: string): void {
   getDb().prepare('UPDATE tickets SET status = ? WHERE id = ?').run(status, id);
   logEvent('ticket_status', 'ticket', id, { to: status });
+}
+
+/**
+ * File a ticket from the storefront order help form. Ids continue the
+ * T-101 sequence; the ticket opens unanswered in the staff inbox.
+ */
+export function createTicket(input: {
+  subject: string;
+  sku?: string | null;
+  orderNumber?: string | null;
+  email?: string | null;
+  body: string;
+}): { ok: boolean; message: string; id?: string } {
+  const subject = input.subject.trim();
+  if (!subject) return { ok: false, message: 'Subject is required.' };
+  if (!input.body.trim()) return { ok: false, message: 'Message is required.' };
+  const db = getDb();
+  const last = db.prepare("SELECT COALESCE(MAX(CAST(SUBSTR(id, 3) AS INTEGER)), 100) AS m FROM tickets").get() as Row;
+  const id = `T-${num(last.m) + 1}`;
+  db.prepare(
+    'INSERT INTO tickets (id, subject, sku, order_number, customer_email, status, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    id,
+    subject,
+    input.sku ?? null,
+    input.orderNumber ?? null,
+    input.email?.trim() ? input.email.trim() : null,
+    'open',
+    input.body.trim(),
+    new Date().toISOString()
+  );
+  logEvent('ticket_opened', 'ticket', id, { subject, orderNumber: input.orderNumber ?? null });
+  return { ok: true, message: `Ticket ${id} created.`, id };
 }

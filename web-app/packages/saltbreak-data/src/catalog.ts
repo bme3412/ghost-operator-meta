@@ -197,9 +197,9 @@ export function listLiveProducts(): Product[] {
 
 export type ShopSort = 'featured' | 'price-asc' | 'price-desc';
 
-export function searchProducts(q: string, category: string, sort: ShopSort): Product[] {
+export function searchProducts(q: string, category: string, sort: ShopSort, maxCents?: number): Product[] {
   const where: string[] = ["p.status = 'live'"];
-  const args: string[] = [];
+  const args: Array<string | number> = [];
   const needle = q.trim();
   if (needle) {
     where.push('(p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ?)');
@@ -208,6 +208,10 @@ export function searchProducts(q: string, category: string, sort: ShopSort): Pro
   if (category.trim()) {
     where.push('p.category = ?');
     args.push(category.trim());
+  }
+  if (maxCents !== undefined && Number.isFinite(maxCents) && maxCents > 0) {
+    where.push('p.price_cents <= ?');
+    args.push(Math.floor(maxCents));
   }
   const order = sort === 'price-asc' ? 'p.price_cents ASC' : sort === 'price-desc' ? 'p.price_cents DESC' : 'p.title';
   const rows = getDb().prepare(`${PRODUCT_WITH_STOCK} WHERE ${where.join(' AND ')} ORDER BY ${order}`).all(...args) as Row[];
@@ -334,6 +338,13 @@ export interface Promo {
   startsAt: string;
   endsAt: string;
   status: 'active' | 'upcoming' | 'ended';
+}
+
+/** The promo for a code, when it exists and is currently active. */
+export function activePromo(code: string): Promo | null {
+  const want = code.trim().toLowerCase();
+  if (!want) return null;
+  return listPromos().find((p) => p.code.toLowerCase() === want && p.status === 'active') ?? null;
 }
 
 export function listPromos(): Promo[] {

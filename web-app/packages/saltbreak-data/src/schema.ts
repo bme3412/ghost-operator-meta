@@ -131,4 +131,36 @@ CREATE TABLE IF NOT EXISTS promos (
   starts_at TEXT NOT NULL,
   ends_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS payouts (
+  id TEXT PRIMARY KEY,
+  arrives_at TEXT NOT NULL,
+  gross_cents INTEGER NOT NULL DEFAULT 0,
+  fee_cents INTEGER NOT NULL DEFAULT 0,
+  net_cents INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS payment_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payout_id TEXT NOT NULL,
+  order_number TEXT NOT NULL,
+  type TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  fee_cents INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sheet_cells (
+  sheet_id INTEGER NOT NULL,
+  ref TEXT NOT NULL,
+  raw TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (sheet_id, ref)
+);
 `;
