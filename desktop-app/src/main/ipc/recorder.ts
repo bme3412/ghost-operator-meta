@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { RecordingEventInput, StartRecordingRequest } from '../../shared/schemas'
 import { getRecorder } from '../recorder/service'
 import { navigatePanel } from '../windows/registry'
+import { isDev } from '../windows/shared'
 import { broadcastLibraryChanged } from './broadcast'
 import { CHANNELS } from './channels'
 import { ALL_ROLES, APP_ROLES, TARGET_ONLY, assertSenderRole } from './sender'
@@ -43,6 +44,18 @@ export function registerRecorderHandlers(): void {
   ipcMain.handle(CHANNELS.recorderEvents, (event: IpcMainInvokeEvent, payload: unknown) => {
     assertSenderRole(event, CHANNELS.recorderEvents, TARGET_ONLY)
     const inputs = z.array(RecordingEventInput).parse(payload)
+    if (isDev()) {
+      // A selectorless interaction can never replay; make the gap loud in
+      // dev instead of discovering it at compile time.
+      for (const input of inputs) {
+        const needsSelector = input.type === 'click' || input.type === 'select' || input.type === 'submit'
+        if (needsSelector && !input.selector && !input.selectorCandidates?.length) {
+          console.warn(
+            `[ghost] recorded ${input.type} without a selector (label: ${input.targetLabel ?? '?'}) — it will compile to a review step.`
+          )
+        }
+      }
+    }
     return recorder().appendEvents(inputs)
   })
 

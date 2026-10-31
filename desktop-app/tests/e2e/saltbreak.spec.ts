@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
@@ -436,6 +437,55 @@ test('scenario D: report a duplicate charge, then run again', async () => {
       timeout: 120_000
     })
     await expect(target.locator('[data-semid="order-help-confirm"]')).toContainText('created')
+  } finally {
+    await app.close()
+  }
+})
+
+test('recorded clicks carry selector candidates', async () => {
+  const app = await launch()
+  try {
+    const target = await targetWindow(app)
+    const panel = await windowByTitle(app, 'Ghost Operator')
+
+    // Demonstrate listing the shop from the Saltbreak home page. The link has
+    // no data-semid, so capture must still record a replayable chain.
+    await panel.getByTestId('panel-teach').click()
+    await panel.getByTestId('teach-goal').fill('List all shop products')
+    await panel.getByTestId('teach-start').click()
+    await expect(panel.getByTestId('recording-pill')).toBeVisible()
+    await target.getByRole('link', { name: /View all 8/ }).click()
+    await expect(target.locator('[data-semid="shop-max"]')).toBeVisible({ timeout: 30_000 })
+
+    await panel.getByTestId('recording-finish').click()
+    await expect(panel.getByTestId('review-steps')).toBeVisible({ timeout: 30_000 })
+
+    // The persisted recording is the ground truth: find the click on the
+    // "View all" link and require a non-empty selector chain.
+    const statePath = join(tmpdir(), `ghost-e2e-state-${process.pid}.json`)
+    await expect
+      .poll(
+        () => {
+          interface StoredEvent {
+            type: string
+            targetLabel?: string
+            selectorCandidates?: string[]
+          }
+          try {
+            const state = JSON.parse(readFileSync(statePath, 'utf8')) as {
+              recordings: Array<{ events: StoredEvent[] }>
+            }
+            const events = state.recordings.flatMap((r) => r.events)
+            return events.find(
+              (e) => e.type === 'click' && (e.targetLabel ?? '').includes('View all')
+            )?.selectorCandidates
+          } catch {
+            return undefined
+          }
+        },
+        { timeout: 30_000 }
+      )
+      .toEqual(expect.arrayContaining([expect.any(String)]))
   } finally {
     await app.close()
   }

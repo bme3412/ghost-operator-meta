@@ -62,6 +62,17 @@ export const RecordingNote = z.object({
 })
 export type RecordingNote = z.infer<typeof RecordingNote>
 
+/**
+ * Stable hooks visible where a demonstration ended. Gives the compiler a
+ * legitimate selector for a final verify step without inventing one.
+ * Optional so older stored recordings keep parsing.
+ */
+export const EndPage = z.object({
+  path: z.string().max(2000),
+  hooks: z.array(z.string().max(2000)).max(12)
+})
+export type EndPage = z.infer<typeof EndPage>
+
 export const Recording = z.object({
   id: z.string().min(1),
   goal: z.string().min(1),
@@ -69,6 +80,7 @@ export const Recording = z.object({
   startedAt: z.string().min(1),
   endedAt: z.string().optional(),
   events: z.array(RecordingEvent).default([]),
-  notes: z.array(RecordingNote).default([])
+  notes: z.array(RecordingNote).default([]),
+  endPage: EndPage.optional()
 })
 export type Recording = z.infer<typeof Recording>

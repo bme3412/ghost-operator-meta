@@ -47,6 +47,32 @@ describe('buildSelectorCandidates', () => {
     expect(selectBestSelector(chain)).toBe('div:nth-of-type(3) > button:nth-of-type(1)')
   })
 
+  it('adds a site-relative anchor href after name, before the css path', () => {
+    const chain = buildSelectorCandidates({
+      name: 'shop-link',
+      href: '/shop',
+      cssPath: 'div:nth-of-type(1) > a:nth-of-type(1)'
+    })
+    expect(chain).toEqual([
+      '[name="shop-link"]',
+      'a[href="/shop"]',
+      'div:nth-of-type(1) > a:nth-of-type(1)'
+    ])
+  })
+
+  it('skips hrefs that are not site-relative', () => {
+    for (const href of ['https://example.com/shop', '//example.com/shop', '#frag', 'shop', '']) {
+      expect(buildSelectorCandidates({ href, cssPath: 'a:nth-of-type(1)' })).toEqual([
+        'a:nth-of-type(1)'
+      ])
+    }
+  })
+
+  it('escapes quotes inside an href value', () => {
+    const chain = buildSelectorCandidates({ href: '/search?q="x"' })
+    expect(chain).toEqual(['a[href="/search?q=\\"x\\""]'])
+  })
+
   it('returns an empty chain when the element offers nothing', () => {
     expect(buildSelectorCandidates({})).toEqual([])
     expect(buildSelectorCandidates({ semid: '  ', id: null, cssPath: undefined })).toEqual([])

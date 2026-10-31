@@ -34,30 +34,36 @@ Verification steps use kind "verify" with checks: [{"name": one of ${KNOWN_CHECK
 When an action cannot be replayed reliably, emit a review step instead: {"id": string, "kind": "review",
 "applicationId": "<the same site id>", "goal": string, "bindings": {}, "dataRefs": [], "checks": []}.
 Rules: only use selectors that appear in the demonstrated events, preferring the first candidate of each chain.
+A "navigate" event's value is a site-relative path the demonstration moved to; it can become a "goto" step directly, with bindings {"action": "goto", "value": "<that path>"} and no selector. When a click is immediately followed by a navigate event, prefer one goto step to the navigate path over replaying the click — the navigation is the intent, and the click's selector may be fragile.
+The final line may be an "end_page" entry listing stable hooks visible where the demonstration ended. When the procedure ends by navigating somewhere new, close it with a "verify" step whose check uses one of those hooks verbatim (for example a target_visible check on a container hook) instead of ending at the goto — the hook is demonstrated evidence, not an invented selector.
 Infer parameters from the demonstrator notes and from literal values repeated across events (for example a record id shown in several targets); bind them as {{inputs.*}} inside selectors and values, and record each mapping in "demonstrated".
 Prefer resolving uncertainty into "unresolved" entries and review steps over guessing: when a selector looks unstable (a deep positional path, a generated class name, a single fragile hook), emit a review step and explain the doubt in "unresolved".
 Never invent selectors, quantities, or identifiers; put anything uncertain in "unresolved".
 Never emit "tool" steps (no tools are registered).`
 
 export function eventSummary(recording: Recording): string {
-  return recording.events
-    .map((e) =>
-      JSON.stringify({
-        seq: e.sequence,
-        type: e.type,
-        semid: e.semanticId ?? null,
-        selector: e.selector ?? null,
-        candidates: (e.selectorCandidates ?? []).slice(0, MAX_SUMMARY_CANDIDATES),
-        accessible:
-          e.accessibleRole ?? e.accessibleLabel
-            ? `${e.accessibleRole ?? 'element'}${e.accessibleLabel ? ` "${e.accessibleLabel}"` : ''}`
-            : null,
-        label: e.targetLabel ?? null,
-        value: e.value ?? null,
-        record: e.recordIdentity ?? null
-      })
+  const lines = recording.events.map((e) =>
+    JSON.stringify({
+      seq: e.sequence,
+      type: e.type,
+      semid: e.semanticId ?? null,
+      selector: e.selector ?? null,
+      candidates: (e.selectorCandidates ?? []).slice(0, MAX_SUMMARY_CANDIDATES),
+      accessible:
+        e.accessibleRole ?? e.accessibleLabel
+          ? `${e.accessibleRole ?? 'element'}${e.accessibleLabel ? ` "${e.accessibleLabel}"` : ''}`
+          : null,
+      label: e.targetLabel ?? null,
+      value: e.value ?? null,
+      record: e.recordIdentity ?? null
+    })
+  )
+  if (recording.endPage) {
+    lines.push(
+      JSON.stringify({ type: 'end_page', path: recording.endPage.path, hooks: recording.endPage.hooks })
     )
-    .join('\n')
+  }
+  return lines.join('\n')
 }
 
 /**

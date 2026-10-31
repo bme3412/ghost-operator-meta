@@ -17,6 +17,8 @@ export interface SelectorElementSnapshot {
   testId?: string | null
   testAttr?: string | null
   name?: string | null
+  /** Raw href attribute for anchors; only site-relative values are used. */
+  href?: string | null
   /** Capped-depth CSS path (tag + nth-of-type), computed by the DOM layer. */
   cssPath?: string | null
 }
@@ -98,8 +100,9 @@ function attributeSelector(attr: string, value: string): string {
 
 /**
  * Build the ordered replay chain for one element, strongest hook first:
- * data-semid, #id, data-testid, data-test, name, then the capped CSS path.
- * Empty values are skipped, duplicates dropped, length capped.
+ * data-semid, #id, data-testid, data-test, name, a site-relative anchor
+ * href, then the capped CSS path. Empty values are skipped, duplicates
+ * dropped, length capped.
  */
 export function buildSelectorCandidates(snapshot: SelectorElementSnapshot): string[] {
   const candidates: string[] = []
@@ -119,6 +122,12 @@ export function buildSelectorCandidates(snapshot: SelectorElementSnapshot): stri
   if (testAttr !== undefined) push(attributeSelector('data-test', testAttr))
   const name = blankToUndefined(snapshot.name)
   if (name !== undefined) push(attributeSelector('name', name))
+  // Site-relative anchor targets replay deterministically; external or
+  // fragment hrefs say nothing stable about the element, so they are skipped.
+  const href = blankToUndefined(snapshot.href)
+  if (href !== undefined && href.startsWith('/') && !href.startsWith('//')) {
+    push(`a[href="${escapeAttributeValue(href)}"]`)
+  }
   const cssPath = blankToUndefined(snapshot.cssPath)
   if (cssPath !== undefined) push(cssPath.trim())
   return candidates

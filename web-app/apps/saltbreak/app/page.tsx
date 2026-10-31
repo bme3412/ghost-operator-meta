@@ -17,6 +17,7 @@ export default function Home() {
           </p>
           <Link
             href="/shop"
+            data-semid="home-shop-all"
             className="mt-6 inline-block bg-neutral-900 px-6 py-2.5 text-sm font-medium text-white"
           >
             Shop all products
@@ -32,7 +33,11 @@ export default function Home() {
       <section className="mt-14">
         <div className="flex items-baseline gap-4">
           <h2 className="text-xl font-semibold tracking-tight">Featured</h2>
-          <Link href="/shop" className="text-sm text-neutral-600 hover:text-black hover:underline">
+          <Link
+            href="/shop"
+            data-semid="home-view-all"
+            className="text-sm text-neutral-600 hover:text-black hover:underline"
+          >
             View all {products.length} →
           </Link>
         </div>

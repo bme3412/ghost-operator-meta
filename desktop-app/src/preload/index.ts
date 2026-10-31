@@ -258,6 +258,7 @@ function snapshotFor(element: Element): SelectorElementSnapshot {
     testId: element.getAttribute('data-testid'),
     testAttr: element.getAttribute('data-test'),
     name: element.getAttribute('name'),
+    href: element.tagName === 'A' ? element.getAttribute('href') : null,
     cssPath: cssPathFor(element)
   }
 }
@@ -439,9 +440,16 @@ function installTargetCapture(): void {
   )
 
   // Runner-driven highlight. Payload is a CSS selector; null clears it.
+  // The preload runs before the parser, so document.head is usually still
+  // null here — attach on DOMContentLoaded rather than throwing (a throw
+  // would abort the rest of this script's initialization).
   const style = document.createElement('style')
   style.textContent = '.ghost-highlight{outline:3px solid #0071e3 !important;outline-offset:3px;}'
-  document.head.appendChild(style)
+  const attachStyle = (): void => {
+    document.head?.appendChild(style)
+  }
+  if (document.head) attachStyle()
+  else document.addEventListener('DOMContentLoaded', attachStyle, { once: true })
   ipcRenderer.on('ghost:highlight', (_event, selector: string | null) => {
     for (const el of document.querySelectorAll('.ghost-highlight')) {
       el.classList.remove('ghost-highlight')

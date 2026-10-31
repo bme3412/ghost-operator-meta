@@ -13,7 +13,7 @@ export interface RecorderDeps {
   now: () => number
   /** Capture the target window and persist the PNG; resolves the stored ref or null. */
   captureScreenshot: (recordingId: string, sequence: number) => Promise<string | null>
-  persistRecording: (recording: Recording) => void
+  persistRecording: (recording: Recording) => void | Promise<void>
   onStateChange: (push: RecorderStatePush) => void
 }
 
@@ -230,7 +230,7 @@ export function createRecorder(deps: RecorderDeps): {
         events: session.events,
         notes: session.notes
       }
-      deps.persistRecording(recording)
+      await deps.persistRecording(recording)
       session = null
       emit()
       return recording

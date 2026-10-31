@@ -78,6 +78,17 @@ describe('meta prompt generality guard', () => {
     expect(forbidden).toHaveLength(3)
   })
 
+  it('maps navigate events to goto steps', () => {
+    expect(META_SYSTEM_PROMPT).toContain('navigate')
+    expect(META_SYSTEM_PROMPT).toContain('"goto"')
+    expect(META_SYSTEM_PROMPT).toContain('prefer one goto step')
+  })
+
+  it('offers end-page hooks for the closing verify step', () => {
+    expect(META_SYSTEM_PROMPT).toContain('end_page')
+    expect(META_SYSTEM_PROMPT).toContain('target_visible')
+  })
+
   it('keeps the output-shape and action/check rules', () => {
     for (const anchor of [
       'allowedApplications',
@@ -128,6 +139,36 @@ describe('meta event summary', () => {
     ])
     expect(line['accessible']).toBe('button "Buy now"')
     expect(line['selector']).toBe('[data-semid="buy-now"]')
+  })
+
+  it('passes a navigate path to the model as the goto value', () => {
+    const summary = eventSummary(
+      recordingWith([
+        {
+          sequence: 0,
+          type: 'click',
+          selectorCandidates: ['div:nth-of-type(1) > a:nth-of-type(1)'],
+          targetLabel: 'View all 8 →',
+          atMs: NOW
+        },
+        { sequence: 1, type: 'navigate', value: '/shop', atMs: NOW + 500 }
+      ])
+    )
+    const lines = summary.split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)
+    expect(lines[1]).toMatchObject({ seq: 1, type: 'navigate', value: '/shop' })
+  })
+
+  it('appends ending-page hooks when the recording carries them', () => {
+    const recording = recordingWith([{ sequence: 0, type: 'navigate', value: '/shop', atMs: NOW }])
+    recording.endPage = { path: '/shop', hooks: ['[data-semid="shop-product-list"]'] }
+    const lines = eventSummary(recording)
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+    expect(lines.at(-1)).toEqual({
+      type: 'end_page',
+      path: '/shop',
+      hooks: ['[data-semid="shop-product-list"]']
+    })
   })
 
   it('omits candidates and descriptors when the event carries none', () => {

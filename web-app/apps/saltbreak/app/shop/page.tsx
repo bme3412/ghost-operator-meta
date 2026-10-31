@@ -67,7 +67,7 @@ export default async function ShopPage({
       {products.length === 0 ? (
         <p className="mt-6 text-sm text-neutral-600">No products match. Clear the search to browse everything.</p>
       ) : (
-        <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-4">
+        <div data-semid="shop-product-list" className="mt-6 grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-4">
           {products.map((p) => (
             <Link
               key={p.sku}
