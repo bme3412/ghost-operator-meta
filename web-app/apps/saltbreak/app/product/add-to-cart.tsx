@@ -20,6 +20,7 @@ export function AddToCart({ sku, max, soldOut }: { sku: string; max: number; sol
       />
       <button
         type="button"
+        data-semid="add-to-cart"
         className="bg-neutral-900 px-6 py-2.5 text-sm font-medium text-white"
         onClick={() => {
           addToCart(sku, qty);

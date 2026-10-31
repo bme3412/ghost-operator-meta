@@ -13,13 +13,15 @@ const SORTS: Array<[ShopSort, string]> = [
 export default async function ShopPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; sort?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; sort?: string; max?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q ?? '';
   const category = sp.category ?? '';
   const sort: ShopSort = sp.sort === 'price-asc' || sp.sort === 'price-desc' ? sp.sort : 'featured';
-  const products = searchProducts(q, category, sort);
+  const maxDollars = sp.max !== undefined && sp.max !== '' ? Number(sp.max) : NaN;
+  const maxCents = Number.isFinite(maxDollars) && maxDollars > 0 ? Math.round(maxDollars * 100) : undefined;
+  const products = searchProducts(q, category, sort, maxCents);
   const categories = listCategories();
   return (
     <div>
@@ -41,6 +43,16 @@ export default async function ShopPage({
             </option>
           ))}
         </select>
+        <input
+          type="number"
+          name="max"
+          min={1}
+          defaultValue={sp.max ?? ''}
+          placeholder="Max $"
+          className="w-24 border border-neutral-300 px-3 py-1.5 text-sm"
+          aria-label="Maximum price in dollars"
+          data-semid="shop-max"
+        />
         <select name="sort" defaultValue={sort} className="border border-neutral-300 px-2 py-1.5 text-sm" aria-label="Sort">
           {SORTS.map(([value, label]) => (
             <option key={value} value={value}>
@@ -57,7 +69,12 @@ export default async function ShopPage({
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-8 md:grid-cols-4">
           {products.map((p) => (
-            <Link key={p.sku} href={`/product/${encodeURIComponent(p.sku)}`} className="group">
+            <Link
+              key={p.sku}
+              href={`/product/${encodeURIComponent(p.sku)}`}
+              data-semid={`product-card-${p.sku}`}
+              className="group"
+            >
               <ProductImage
                 src={p.primaryImage}
                 alt={p.title}

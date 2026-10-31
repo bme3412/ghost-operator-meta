@@ -4,7 +4,38 @@ export interface CartLine {
 }
 
 const KEY = 'saltbreak-cart';
+const PROMO_KEY = 'saltbreak-promo';
 const EVENT = 'saltbreak-cart-changed';
+
+export interface CartPromo {
+  code: string;
+  label: string;
+}
+
+export function readPromo(): CartPromo | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(PROMO_KEY) ?? 'null');
+    if (typeof raw === 'object' && raw !== null && typeof (raw as CartPromo).code === 'string') {
+      return { code: (raw as CartPromo).code, label: String((raw as CartPromo).label ?? '') };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function writePromo(promo: CartPromo | null): void {
+  if (promo) window.localStorage.setItem(PROMO_KEY, JSON.stringify(promo));
+  else window.localStorage.removeItem(PROMO_KEY);
+  window.dispatchEvent(new Event(EVENT));
+}
+
+/** Percent off parsed from the promo label ("10% off everything" -> 10). */
+export function promoPercent(label: string): number {
+  const m = /(\d+)\s*%/.exec(label);
+  return m ? Number(m[1]) : 0;
+}
 
 export function readCart(): CartLine[] {
   if (typeof window === 'undefined') return [];

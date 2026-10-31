@@ -8,6 +8,8 @@ const STAFF: Array<[string, string]> = [
   ['Supplier intake', '/staff/supplier'],
   ['Catalog staging', '/staff/catalog'],
   ['Orders', '/staff/orders'],
+  ['Payments', '/staff/payments'],
+  ['Books', '/staff/books'],
   ['Inventory', '/staff/inventory'],
   ['Support inbox', '/staff/inbox'],
   ['Customers', '/staff/customers'],

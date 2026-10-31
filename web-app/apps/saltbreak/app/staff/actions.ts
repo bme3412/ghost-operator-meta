@@ -1,7 +1,18 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { addReply, sendEmail, setOrderStatus, setStock, setTicketStatus } from '@saltbreak/data';
+import { redirect } from 'next/navigation';
+import {
+  addReply,
+  importPayoutCsv,
+  refundLine,
+  sendEmail,
+  sendToBooks,
+  setCell,
+  setOrderStatus,
+  setStock,
+  setTicketStatus,
+} from '@saltbreak/data';
 
 export async function setStockAction(form: FormData): Promise<void> {
   const sku = String(form.get('sku') ?? '');
@@ -39,4 +50,37 @@ export async function orderAction(form: FormData): Promise<void> {
   if (id && status) setOrderStatus(id, status);
   revalidatePath('/staff/orders');
   revalidatePath('/staff/inventory');
+}
+
+export async function refundLineAction(form: FormData): Promise<void> {
+  const id = Number(form.get('lineId') ?? 0);
+  const payout = String(form.get('payout') ?? '');
+  if (id) refundLine(id);
+  if (payout) revalidatePath(`/staff/payments/${payout}`);
+  revalidatePath('/staff/payments');
+  revalidatePath('/staff/books');
+}
+
+export async function sendToBooksAction(form: FormData): Promise<void> {
+  const payout = String(form.get('payout') ?? '');
+  if (!payout) return;
+  const r = sendToBooks(payout);
+  revalidatePath('/staff/books');
+  if (r.ok && r.sheetId !== undefined) redirect(`/staff/books/${r.sheetId}`);
+}
+
+export async function saveCellAction(sheetId: number, ref: string, raw: string): Promise<{ ok: boolean }> {
+  if (!Number.isInteger(sheetId) || !ref.trim()) return { ok: false };
+  setCell(sheetId, ref, raw);
+  revalidatePath(`/staff/books/${sheetId}`);
+  return { ok: true };
+}
+
+export async function importCsvAction(form: FormData): Promise<void> {
+  const file = form.get('file');
+  const name = String(form.get('name') ?? '').trim() || 'Imported payout';
+  if (file instanceof File) {
+    importPayoutCsv(name, await file.text());
+  }
+  revalidatePath('/staff/books');
 }
