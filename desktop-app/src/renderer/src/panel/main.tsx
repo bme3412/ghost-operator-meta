@@ -17,16 +17,26 @@ import { TeachView } from './views/TeachView'
 import { TERMINAL_RUN, type PanelNav, type PanelView } from './nav'
 
 const TITLES: Record<PanelView, string> = {
-  home: 'Ghost Operator',
-  teach: 'Teach a task',
-  recording: 'Recording',
-  review: 'Review what Ghost learned',
-  runSetup: 'Run a skill',
-  running: 'Running',
-  result: 'Run result',
-  batch: 'While you were away',
-  library: 'Library',
+  home: 'Muse for SMB',
+  teach: 'Teach Muse for SMB a task',
+  recording: 'Muse for SMB is watching',
+  review: 'What Muse for SMB learned',
+  runSetup: 'Run a playbook',
+  running: 'Muse for SMB is working',
+  result: 'Work report',
+  batch: 'Work report',
+  library: 'My playbook',
   settings: 'Settings'
+}
+
+/** Which primary tab a view belongs to. */
+function tabFor(nav: PanelNav): 'today' | 'playbook' | 'activity' {
+  if (nav.view === 'library') {
+    if (nav.libraryTab === 'runs') return 'activity'
+    return 'playbook'
+  }
+  if (nav.view === 'settings') return 'today'
+  return 'today'
 }
 
 function PanelApp(): React.JSX.Element {
@@ -112,6 +122,8 @@ function PanelApp(): React.JSX.Element {
   }, [nav.view])
 
   const onNav = (next: PanelNav): void => setNav(next)
+  const [overflowOpen, setOverflowOpen] = useState(false)
+  const activeTab = tabFor(nav)
 
   return (
     <main className="panel-root">
@@ -124,11 +136,12 @@ function PanelApp(): React.JSX.Element {
             data-semid="panel-back"
             onClick={() => setNav({ view: 'home' })}
           >
-            ‹ Home
+            ‹ Today
           </button>
         ) : (
           <span className="panel-brand" data-testid="panel-title" data-semid="panel-title">
-            {TITLES[nav.view]}
+            Muse for SMB
+            <span className="panel-subbrand">Saltbreak Surf Co.</span>
           </span>
         )}
         {nav.view !== 'home' && (
@@ -137,32 +150,75 @@ function PanelApp(): React.JSX.Element {
           </span>
         )}
         <span className="panel-header-spacer" />
-        {nav.view !== 'library' && (
+        <span className="overflow-wrap">
           <button
             type="button"
             className="btn-link"
-            data-testid="panel-library"
-            data-semid="panel-library"
-            onClick={() => setNav({ view: 'library', libraryTab: 'skills' })}
+            aria-label="More options"
+            data-semid="nav-overflow"
+            onClick={() => setOverflowOpen((open) => !open)}
           >
-            Library
+            ⋯
           </button>
-        )}
-        {nav.view !== 'settings' && (
-          <button
-            type="button"
-            className="btn-link"
-            data-testid="panel-settings"
-            data-semid="panel-settings"
-            onClick={() => setNav({ view: 'settings' })}
-          >
-            Settings
-          </button>
-        )}
+          {overflowOpen && (
+            <span className="overflow-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="panel-settings"
+                data-semid="panel-settings"
+                onClick={() => {
+                  setOverflowOpen(false)
+                  setNav({ view: 'settings' })
+                }}
+              >
+                Settings
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-semid="nav-show-website"
+                onClick={() => {
+                  setOverflowOpen(false)
+                  window.ghost.target.show().catch(() => undefined)
+                }}
+              >
+                Show Saltbreak
+              </button>
+            </span>
+          )}
+        </span>
       </header>
+      <nav className="panel-tabs" aria-label="Muse for SMB sections">
+        <button
+          type="button"
+          className={`panel-tab${activeTab === 'today' ? ' selected' : ''}`}
+          data-semid="nav-today"
+          onClick={() => setNav({ view: 'home' })}
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          className={`panel-tab${activeTab === 'playbook' ? ' selected' : ''}`}
+          data-testid="panel-library"
+          data-semid="nav-playbook"
+          onClick={() => setNav({ view: 'library', libraryTab: 'skills' })}
+        >
+          My playbook
+        </button>
+        <button
+          type="button"
+          className={`panel-tab${activeTab === 'activity' ? ' selected' : ''}`}
+          data-semid="nav-activity"
+          onClick={() => setNav({ view: 'library', libraryTab: 'runs' })}
+        >
+          Activity
+        </button>
+      </nav>
       {bridgeError !== null && (
         <p className="alert-error" role="alert">
-          Could not reach Ghost: {bridgeError}
+          Could not reach Muse for SMB: {bridgeError}
         </p>
       )}
       <div className="panel-body">

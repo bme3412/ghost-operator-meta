@@ -1,4 +1,4 @@
-# Ghost Operator (desktop-app)
+# Muse for SMB (desktop-app)
 
 Electron app that learns a web workflow from a demonstration.
 
@@ -24,14 +24,14 @@ pnpm rebuild electron   # downloads the Electron binary (needs network)
 
 ## Run (two servers)
 
-Ghost Operator drives Saltbreak through its real UI, so both run together:
+Muse for SMB drives Saltbreak through its real UI, so both run together:
 
 ```sh
 # Terminal 1: the target web app
 cd web-app && pnpm install && pnpm db:seed && pnpm dev:saltbreak   # http://localhost:3000
 
 # Terminal 2: Ghost Operator
-cd desktop-app && pnpm dev        # target website + Ghost panel
+cd desktop-app && pnpm dev        # target website + Muse for SMB panel
 ```
 
 Other commands:
@@ -88,18 +88,18 @@ environment variables always win over that file. Packaged builds read
 
 ## Demo script: the Now feed (3 minutes)
 
-Home is a Now feed: Ghost watches Saltbreak's business events, clusters
+Home is the Today briefing: Muse for SMB watches Saltbreak's business events, clusters
 repeatable work, and offers the next safe action. Preconditions:
 `pnpm dev:saltbreak` running and `pnpm db:reset` done, so the after-hours
 pile (T-201 to T-208) is open.
 
-1. **0:00 — The pile, noticed.** Open Ghost. Under **Ready to run**: "3
+1. **0:00 — The pile, noticed.** Open Muse for SMB. Under **Ready when you are**: "3
    damaged-shipment tickets" and "3 wrong-size tickets", each with a
    "Because…" line citing Maya's rules. Under **Needs you**: the T-207 bank
    chargeback — no rule covers it.
 2. **0:40 — Preview before anything runs.** Click **Preview** on the damaged
    cluster: exactly T-203, T-205, T-208 and the skill that will handle them.
-3. **1:10 — Approve one batch.** **Run on 3**. Ghost refunds each case,
+3. **1:10 — Approve one batch.** **Run on 3**. Muse for SMB refunds each case,
    quoting the rule it used; the batch summary counts down on screen.
 4. **2:00 — The feed updates itself.** Back on Home, the damaged cluster is
    gone, **Recent activity** shows "batch finished — 3 resolved", and T-207
@@ -109,14 +109,14 @@ pile (T-201 to T-208) is open.
    automation, and evidence as one system.
 
 Dismissing a cluster remembers the choice: it stays gone until a new case
-joins it. With `MODEL_API_KEY` set, Muse re-ranks and rephrases the feed;
+joins it. With `MODEL_API_KEY` set, Muse for SMB re-ranks and rephrases the feed;
 the clusters, matches, and actions are always computed deterministically,
 and fixture mode shows the identical feed offline.
 
 ## Demo script: the Vacation
 
-Maya teaches Ghost one support ticket on Thursday, says her rules out loud,
-and goes surfing. Ghost clears the after-hours pile and hands back the one
+Maya teaches Muse for SMB one support ticket on Thursday, says her rules out loud,
+and goes surfing. Muse for SMB clears the after-hours pile and hands back the one
 case her rules don't cover.
 
 Setup: start `pnpm dev:saltbreak` in `web-app` first — recording before the
@@ -145,14 +145,14 @@ Timed beats (3 minutes):
 5. **1:45 — Publish and batch.** **Save and publish**. In run setup pick
    **Run on many**, click **Find open cases on this page**, then
    **Run on 7 cases**.
-6. **2:00 — Ghost works.** T-202 to T-208 run one by one. Each refund or
+6. **2:00 — Muse for SMB works.** T-202 to T-208 run one by one. Each refund or
    exchange quotes the rule it used; T-207 ends as "Needs you" because no
    rule covers a chargeback.
 7. **2:40 — The map (expanded).** Open **Library → Task map**. The windows
-   reflow on camera: Saltbreak left, Ghost right. The skill reads as one
+   reflow on camera: Saltbreak left, Muse for SMB right. The playbook reads as one
    spine — Inputs, steps in plain language, Verification — with Suggestions
    underneath. This is the closing frame.
-8. **2:55 — The handoff.** The phone buzzes: "Ghost resolved 6 tickets. 1
+8. **2:55 — The handoff.** The phone buzzes: "Muse for SMB resolved 6 tickets. 1
    needs you." Tapping it opens the away page with T-207 at the top.
 
 No Saltbreak reset? The curated starter **Handle after-hours support tickets**
@@ -173,7 +173,7 @@ still creates that taught skill as a separate entry.
 5. Click **Finish** — the draft procedure generates itself for review.
 6. Inspect the plain-language steps and callouts, then **Save and publish**.
 7. Run setup opens with the new skill selected; enter a new ticket, e.g. `T-102`.
-8. Pick **Guide me** (you click, Ghost checks) or **Do it for me**, then **Start run**.
+8. Pick **Guide me** (you click, Muse for SMB checks) or **Do it for me**, then **Start run**.
 9. Step through (guide) or watch (assisted) as the new ticket is resolved.
 10. Verify: the ticket status in Saltbreak, and the checks on the result view.
 11. Click **Run on another case** to reuse the skill again, or **See details**
@@ -186,11 +186,11 @@ on one to open Teach with its goal prefilled.
 
 ## Architecture
 
-- Two windows: target (Saltbreak web app) and the Ghost panel (Home, Teach,
+- Two windows: target (Saltbreak web app) and the Muse for SMB panel (Today, Teach,
   recording, review, run, Library, Settings). The panel widens for the Library.
 - The target page is observed, never owned: a preload capture layer records
   committed DOM events; the runner replays real clicks/fills/submits and
-  verifies by reading the live page. Ghost never imports Saltbreak code.
+  verifies by reading the live page. Muse for SMB never imports Saltbreak code.
 - One authoritative store in the main process, persisted as versioned JSON
   (current: schema v6, which adds batches; v5 states migrate forward unchanged,
   and Harbor-era states migrate forward keeping recordings).

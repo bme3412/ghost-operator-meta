@@ -213,7 +213,7 @@ export function RunSetupView({
                     <strong>Run on many</strong>
                     <span className="muted">
                       {' '}
-                      — Ghost works through each case on its own and tells you how it went.
+                      — Muse for SMB works through each case on its own and tells you how it went.
                     </span>
                   </span>
                 </label>
@@ -235,7 +235,7 @@ export function RunSetupView({
                 </Button>
                 {caseIds.length > 0 && (
                   <p className="muted" data-semid="run-case-count">
-                    {caseIds.length} case{caseIds.length === 1 ? '' : 's'}. Ghost runs each one in “Do
+                    {caseIds.length} case{caseIds.length === 1 ? '' : 's'}. Muse for SMB runs each one in “Do
                     it for me” mode and hands back anything your rules don’t cover.
                   </p>
                 )}
@@ -272,7 +272,7 @@ export function RunSetupView({
             )}
             {!many && (
             <fieldset className="mode-options">
-              <legend>How should Ghost run it?</legend>
+              <legend>How should Muse for SMB run it?</legend>
               <label className="mode-option">
                 <input
                   type="radio"
@@ -287,7 +287,7 @@ export function RunSetupView({
                 />
                 <span>
                   <strong>Guide me</strong>
-                  <span className="muted"> — you click, Ghost checks each step.</span>
+                  <span className="muted"> — you click, Muse for SMB checks each step.</span>
                   {recommended === 'guide' && <span className="muted"> (Recommended)</span>}
                 </span>
               </label>
@@ -305,7 +305,7 @@ export function RunSetupView({
                 />
                 <span>
                   <strong>Do it for me</strong>
-                  <span className="muted"> — Ghost acts on its own.</span>
+                  <span className="muted"> — Muse for SMB acts on its own.</span>
                   {recommended === 'assisted' && <span className="muted"> (Recommended)</span>}
                 </span>
               </label>

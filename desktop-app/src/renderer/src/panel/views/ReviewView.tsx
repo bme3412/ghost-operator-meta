@@ -170,7 +170,14 @@ export function ReviewView({
         )}
         {phase === 'ready' && proposal !== null && (
           <div>
-            <h2>Here is what Ghost learned</h2>
+            <p className="stage-steps" aria-label="Teaching progress">
+              <span>1 · Show Muse for SMB</span>
+              <span aria-hidden="true">→</span>
+              <span className="stage-current">2 · Check my understanding</span>
+              <span aria-hidden="true">→</span>
+              <span>3 · Ready to use</span>
+            </p>
+            <h2>Here is what Muse for SMB learned</h2>
             <ol className="steps-plain" data-testid="review-steps" data-semid="review-steps">
               {proposal.recipe.steps.map((step, index) => (
                 <li key={step.id}>

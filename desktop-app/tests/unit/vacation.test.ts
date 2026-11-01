@@ -288,7 +288,7 @@ describe('batch runner', () => {
     expect(t207.status).toBe('escalated')
     expect(t207.evidence).toContain('chargeback')
     expect(final.items.filter((i) => i.status === 'succeeded')).toHaveLength(6)
-    expect(batchHeadline(final)).toBe('Ghost resolved 6 tickets. 1 needs you.')
+    expect(batchHeadline(final)).toBe('Muse for SMB resolved 6 tickets. 1 needs your judgment.')
     expect(persisted.at(-1)).toEqual(final)
   })
 
@@ -334,7 +334,7 @@ describe('phone notification', () => {
     })
     expect(req.url).toBe('https://ntfy.sh/maya-saltbreak')
     expect(req.headers).toMatchObject({
-      Title: 'Ghost resolved 2 tickets. 1 needs you.',
+      Title: 'Muse for SMB resolved 2 tickets. 1 needs your judgment.',
       Click: 'http://192.168.1.5:3200/away/batch-1?k=abc',
       Priority: 'high'
     })
@@ -376,7 +376,7 @@ describe('away page', () => {
   const html = renderAwayPage(FINISHED, { caseUrl: (id) => `http://192.168.1.5:3000/staff/inbox#${id}` })
 
   it('leads with the case that needs the owner', () => {
-    expect(html).toContain('Ghost resolved 2 tickets. 1 needs you.')
+    expect(html).toContain('Muse for SMB resolved 2 tickets. 1 needs your judgment.')
     expect(html.indexOf('data-case="T-207"')).toBeLessThan(html.indexOf('data-case="T-201"'))
     expect(html).toContain('Open T-207')
   })

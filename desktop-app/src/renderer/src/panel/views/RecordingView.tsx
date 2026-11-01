@@ -107,6 +107,13 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
 
   return (
     <div>
+      <p className="stage-steps" aria-label="Teaching progress">
+        <span className="stage-current">1 · Show Muse for SMB</span>
+        <span aria-hidden="true">→</span>
+        <span>2 · Check my understanding</span>
+        <span aria-hidden="true">→</span>
+        <span>3 · Ready to use</span>
+      </p>
       <section className="card" aria-label="Recording status">
         <p>
           <span className="rec-pill" data-testid="recording-pill" data-semid="recording-pill">
@@ -120,7 +127,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
           Recording {targetName}
           {push?.goal ? ` — ${push.goal}` : ''}
         </p>
-        <p className="toolbar-hint">Demonstrate the task in the website, then Finish.</p>
+        <p className="toolbar-hint">Muse for SMB is watching — do the task as usual, then Finish.</p>
         <p className="toolbar-count" data-testid="recording-count">
           {eventCount} action{eventCount === 1 ? '' : 's'} captured
         </p>
@@ -169,7 +176,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
                   setNoteText((current) => (current.trim() ? `${current.trim()} ${text}` : text))
                   setMicNotice(
                     source === 'canned'
-                      ? 'No transcription key is set, so Ghost filled in a sample rule. Edit it before saving.'
+                      ? 'No transcription key is set, so Muse for SMB filled in a sample rule. Edit it before saving.'
                       : 'Check the transcript, then save the note.'
                   )
                 }}

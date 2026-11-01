@@ -49,7 +49,7 @@ export function MicButton({
     try {
       const granted = await window.ghost.recorder.requestMic()
       if (!granted) {
-        onError('Microphone access is off. Allow Ghost Operator in System Settings → Privacy → Microphone, or type the note.')
+        onError('Microphone access is off. Allow Muse for SMB in System Settings → Privacy → Microphone, or type the note.')
         return
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })

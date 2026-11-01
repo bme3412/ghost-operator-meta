@@ -74,14 +74,19 @@ export function NowFeed({ onNav }: { onNav: OnNav }): React.JSX.Element {
   }
 
   const renderOpportunity = (opportunity: Opportunity): React.JSX.Element => (
-    <li key={opportunity.id} className="skill-card" data-semid={`feed-item-${opportunity.id}`}>
+    <li
+      key={opportunity.id}
+      className={`skill-card${opportunity.state !== 'ready' ? ' feed-row-judgment' : ''}`}
+      data-semid={`feed-item-${opportunity.id}`}
+    >
       <div>
         <strong>{opportunity.title}</strong>
         <p className="muted">Because… {opportunity.because}</p>
         {expandedId === opportunity.id && (
           <p className="muted" data-semid={`feed-preview-${opportunity.id}`}>
-            Affected: {opportunity.caseIds.join(', ')}
-            {opportunity.skillName ? ` · Skill: ${opportunity.skillName}` : ''}
+            {opportunity.state === 'ready'
+              ? `Muse for SMB will handle ${opportunity.caseIds.join(', ')}${opportunity.skillName ? ` with ${opportunity.skillName}` : ''}. Nothing runs until you say go.`
+              : `Waiting on you: ${opportunity.caseIds.join(', ')}.`}
           </p>
         )}
       </div>
@@ -134,20 +139,20 @@ export function NowFeed({ onNav }: { onNav: OnNav }): React.JSX.Element {
       {feed === null && <p className="muted">Watching for new work…</p>}
 
       {feed !== null && feed.needsYou.length > 0 && (
-        <section className="card" aria-label="Needs you">
-          <h2>Needs you</h2>
+        <section aria-label="Needs your judgment">
+          <h2>Needs your judgment</h2>
           <ul className="skill-cards">{feed.needsYou.map(renderOpportunity)}</ul>
         </section>
       )}
       {feed !== null && feed.ready.length > 0 && (
-        <section className="card" aria-label="Ready to run">
-          <h2>Ready to run</h2>
+        <section aria-label="Ready when you are">
+          <h2>Ready when you are</h2>
           <ul className="skill-cards">{feed.ready.map(renderOpportunity)}</ul>
         </section>
       )}
       {feed !== null && feed.needsYou.length === 0 && feed.ready.length === 0 && (
         <p className="muted" data-semid="feed-caught-up">
-          All caught up. New tickets and orders will show up here.
+          All caught up. Muse for SMB is watching for new work.
         </p>
       )}
 
@@ -156,8 +161,8 @@ export function NowFeed({ onNav }: { onNav: OnNav }): React.JSX.Element {
       />
 
       {feed !== null && feed.recent.length > 0 && (
-        <section className="card" aria-label="Recent activity">
-          <h2>Recent activity</h2>
+        <section aria-label="Earlier">
+          <h2>Earlier</h2>
           <ul className="skill-cards" data-semid="feed-recent">
             {feed.recent.map((item) => (
               <li key={item.id} className="skill-card">

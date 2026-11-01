@@ -67,7 +67,7 @@ export function BatchView({ onNav, batchId }: { onNav: OnNav; batchId: string })
         <h2 data-semid="batch-headline">
           {batch.status === 'running'
             ? `Working through ${batch.items.length} ${noun}s…`
-            : `Ghost resolved ${handled} ${noun}${handled === 1 ? '' : 's'}. ${needsYou === 0 ? 'Nothing needs you.' : `${needsYou} need${needsYou === 1 ? 's' : ''} you.`}`}
+            : `Muse for SMB resolved ${handled} ${noun}${handled === 1 ? '' : 's'}. ${needsYou === 0 ? 'Nothing needs your judgment.' : `${needsYou} need${needsYou === 1 ? 's' : ''} your judgment.`}`}
         </h2>
         <p className="muted">{batch.skillName}</p>
         <ul className="batch-list" data-semid="batch-items">

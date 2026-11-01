@@ -125,7 +125,7 @@ function ghostRecentItems(): ActivityItem[] {
 }
 
 /**
- * The deterministic Now feed. When a model key is configured, Muse may
+ * The deterministic Now feed. When a model key is configured, Muse for SMB may
  * re-rank and rephrase the opportunities; any failure keeps the
  * deterministic feed plus a warning. The model never starts runs.
  */

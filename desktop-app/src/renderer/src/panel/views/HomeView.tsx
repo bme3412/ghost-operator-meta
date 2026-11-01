@@ -114,6 +114,16 @@ export function HomeView({
         </p>
       )}
 
+      <div className="briefing-head">
+        <h1>
+          {new Date().getHours() < 12
+            ? 'Good morning'
+            : new Date().getHours() < 18
+              ? 'Good afternoon'
+              : 'Good evening'}
+          {' — here\u2019s Saltbreak today'}
+        </h1>
+      </div>
       {reachable && status !== null ? (
         <p role="status" data-semid="home-target-status">
           <span className="dot dot-ok" aria-hidden="true" /> Connected to{' '}
@@ -134,7 +144,7 @@ export function HomeView({
             </p>
           )}
           <div>
-            <p className="muted">Run Saltbreak alongside Ghost Operator:</p>
+            <p className="muted">Muse for SMB can&rsquo;t reach Saltbreak yet. Run Saltbreak alongside Muse for SMB:</p>
             <pre className="code-block" data-semid="home-setup-commands">
               {SETUP_COMMANDS}
             </pre>
@@ -165,12 +175,12 @@ export function HomeView({
           data-semid="teach"
           onClick={() => onNav({ view: 'teach' })}
         >
-          Teach a new task
+          Teach Muse for SMB a task
         </Button>
       </div>
       {skillsLoaded && skills.length === 0 && (
         <p className="muted" data-semid="home-empty-hint">
-          Show Ghost a task once, then reuse it.
+          Show Muse for SMB a task once, then reuse it whenever it comes up.
         </p>
       )}
 

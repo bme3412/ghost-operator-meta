@@ -37,14 +37,16 @@ export function summarizeBatch(batch: BatchRecord): BatchSummary {
   }
 }
 
-/** "Ghost resolved 6 tickets. 1 needs you." */
+/** "Muse for SMB resolved 6 tickets. 1 needs your judgment." */
 export function batchHeadline(batch: BatchRecord): string {
   const { handled, escalated, failed } = summarizeBatch(batch)
   const noun = batch.inputKey === 'ticketId' ? 'ticket' : 'case'
   const plural = (n: number): string => `${n} ${noun}${n === 1 ? '' : 's'}`
   const needsYou = escalated.length + failed.length
-  const lead = `Ghost resolved ${plural(handled.length)}.`
-  return needsYou === 0 ? `${lead} Nothing needs you.` : `${lead} ${needsYou} need${needsYou === 1 ? 's' : ''} you.`
+  const lead = `Muse for SMB resolved ${plural(handled.length)}.`
+  return needsYou === 0
+    ? `${lead} Nothing needs your judgment.`
+    : `${lead} ${needsYou} need${needsYou === 1 ? 's' : ''} your judgment.`
 }
 
 function itemFromRecord(item: BatchItem, record: RunRecord | null): BatchItem {

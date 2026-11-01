@@ -42,7 +42,7 @@ export function renderAwayPage(
     .map(
       (item) => `<article class="card needs" data-case="${esc(item.caseId)}">
   <h3>${esc(item.caseId)} <span class="tag">${item.status === 'escalated' ? 'Handed back' : 'Did not finish'}</span></h3>
-  <p class="why">${esc(item.reason ?? item.error ?? 'Ghost could not finish this case.')}</p>
+  <p class="why">${esc(item.reason ?? item.error ?? 'Muse for SMB could not finish this case.')}</p>
   ${item.evidence ? `<blockquote>${esc(item.evidence)}</blockquote>` : ''}
   ${caseLink(item, options.caseUrl)}
 </article>`
@@ -88,7 +88,7 @@ export function renderAwayPage(
 </head>
 <body>
 <header>
-  <div class="eyebrow">Ghost · while you were away</div>
+  <div class="eyebrow">Muse for SMB · while you were away</div>
   <h1 data-semid="away-headline">${esc(batchHeadline(batch))}</h1>
 </header>
 <main>

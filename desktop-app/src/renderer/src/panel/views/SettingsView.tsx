@@ -49,7 +49,7 @@ export function SettingsView(): React.JSX.Element {
     <div>
       <section className="card" aria-label="Website">
         <h2>Website</h2>
-        <p className="muted">The site Ghost teaches, guides, and assists.</p>
+        <p className="muted">The site Muse for SMB learns from and works in.</p>
         <div className="field">
           <label htmlFor="settings-url">Site URL</label>
           <input

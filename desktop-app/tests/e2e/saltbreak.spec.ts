@@ -81,7 +81,7 @@ test('target-down launch shows the offline page and panel Home', async () => {
   })
   try {
     await expect.poll(async () => app.windows().length, { timeout: 30_000 }).toBe(2)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
     const target = await windowByTitle(app, 'Saltbreak unreachable')
 
     await expect(target.locator('#status-text')).toContainText(/Checking|Still unreachable/)
@@ -106,6 +106,7 @@ test('target-down launch shows the offline page and panel Home', async () => {
     await panel.getByTestId('panel-teach').click()
     await expect(panel.getByTestId('teach-goal')).toBeVisible()
     await panel.getByTestId('panel-back').click()
+    await panel.locator('[data-semid="nav-overflow"]').click()
     await panel.getByTestId('panel-settings').click()
     await expect(panel.getByTestId('settings-url')).toHaveValue('http://localhost:3999')
   } finally {
@@ -118,7 +119,7 @@ test('teach, publish, and assisted reuse on new tickets', async () => {
   const app = await launch()
   try {
     const target = await targetWindow(app)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
 
     // 1. Home shows the live target connection.
     await expect(panel.locator('[data-semid="home-target-status"]')).toContainText('Connected')
@@ -228,12 +229,12 @@ test('home page idea opens Teach with the goal prefilled', async () => {
   const app = await launch()
   try {
     await targetWindow(app)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
     await expect(panel.locator('[data-semid="page-ideas"]')).toBeVisible({ timeout: 30_000 })
     const teachButtons = panel.locator('[data-semid^="page-idea-teach-"]')
     await expect(teachButtons.first()).toBeVisible()
     await teachButtons.first().click()
-    await expect(panel.getByTestId('panel-title')).toContainText('Teach a task')
+    await expect(panel.getByTestId('panel-title')).toContainText('Teach Muse for SMB a task')
     await expect(panel.getByTestId('teach-goal')).not.toHaveValue('')
   } finally {
     await app.close()
@@ -244,7 +245,7 @@ test('teach-view page idea prefills the goal and example', async () => {
   const app = await launch()
   try {
     await targetWindow(app)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
     await panel.getByTestId('panel-teach').click()
     await expect(panel.locator('[data-semid="page-ideas"]')).toBeVisible({ timeout: 30_000 })
     const firstTitle = await panel.locator('[data-semid="page-ideas"] strong').first().textContent()
@@ -260,7 +261,7 @@ test('starter task opens run setup for the seeded skill', async () => {
   const app = await launch()
   try {
     const target = await targetWindow(app)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
     // Starter cards live in Teach now (Home is the Now feed). Owner cards
     // render once the panel sees a /staff/* page.
     await target.goto(`${TARGET_URL}/staff/inbox`)
@@ -293,7 +294,7 @@ async function openStarter(
   startPath: string
 ): Promise<{ target: Page; panel: Page }> {
   const target = await targetWindow(app)
-  const panel = await windowByTitle(app, 'Ghost Operator')
+  const panel = await windowByTitle(app, 'Muse for SMB')
   // Starter cards are area-first: land the target in the card's area so the
   // panel's page push deterministically shows it. They live in Teach now.
   await target.goto(`${TARGET_URL}${startPath}`)
@@ -394,7 +395,7 @@ test('the Vacation: teach the rules once, then Ghost works the after-hours pile'
   const app = await launch()
   try {
     const target = await targetWindow(app)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
 
     // Thursday: Maya says her rules, then refunds one damaged board herself.
     await panel.getByTestId('panel-teach').click()
@@ -433,7 +434,7 @@ test('the Vacation: teach the rules once, then Ghost works the after-hours pile'
 
     // The beach: one honest summary. The chargeback comes back to Maya.
     await expect(panel.locator('[data-semid="batch-headline"]')).toHaveText(
-      'Ghost resolved 6 tickets. 1 needs you.',
+      'Muse for SMB resolved 6 tickets. 1 needs your judgment.',
       { timeout: 360_000 }
     )
     await expect(panel.locator('[data-semid="batch-item-T-207"]')).toHaveAttribute(
@@ -464,7 +465,7 @@ test('recorded clicks carry selector candidates', async () => {
   const app = await launch()
   try {
     const target = await targetWindow(app)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
 
     // Demonstrate listing the shop from the Saltbreak home page. The link has
     // no data-semid, so capture must still record a replayable chain.
@@ -514,7 +515,7 @@ test('now feed clusters new damage reports and runs the covered batch', async ()
   const app = await launch()
   try {
     const target = await targetWindow(app)
-    const panel = await windowByTitle(app, 'Ghost Operator')
+    const panel = await windowByTitle(app, 'Muse for SMB')
 
     // Two new damaged-item reports arrive through the storefront help form.
     // (Runs after the Vacation: the pile itself is already worked, and the
@@ -541,7 +542,7 @@ test('now feed clusters new damage reports and runs the covered batch', async ()
     // Approve the batch and watch it resolve both tickets.
     await item.locator('[data-semid^="feed-run-"]').click()
     await expect(panel.locator('[data-semid="batch-headline"]')).toHaveText(
-      'Ghost resolved 2 tickets. Nothing needs you.',
+      'Muse for SMB resolved 2 tickets. Nothing needs your judgment.',
       { timeout: 360_000 }
     )
 

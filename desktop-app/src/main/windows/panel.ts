@@ -16,7 +16,7 @@ export const PANEL_HEIGHT = 800
  */
 export function createPanelWindow(target: BrowserWindow): BrowserWindow {
   const window = new BrowserWindow({
-    title: 'Ghost Operator',
+    title: 'Muse for SMB',
     width: PANEL_DOCKED_WIDTH,
     height: PANEL_HEIGHT,
     useContentSize: true,

@@ -5,12 +5,12 @@ import { RunsSection } from '../../library/RunsSection'
 import { SkillsSection } from '../../library/SkillsSection'
 import type { LibraryTab, OnNav } from '../nav'
 
-/** Workflow order: demonstrate, compile, run, then inspect the map. */
+/** Playbook first; demonstrations and the shop map are detail views. */
 const TABS: Array<{ id: LibraryTab; label: string }> = [
-  { id: 'recordings', label: 'Recordings' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'runs', label: 'Runs' },
-  { id: 'map', label: 'Task map' }
+  { id: 'skills', label: 'Playbooks' },
+  { id: 'runs', label: 'Activity' },
+  { id: 'recordings', label: 'Demonstrations' },
+  { id: 'map', label: 'How Muse for SMB sees your shop' }
 ]
 
 export function LibraryView({

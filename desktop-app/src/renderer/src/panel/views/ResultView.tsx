@@ -46,11 +46,11 @@ export function ResultView({ onNav, runId }: { onNav: OnNav; runId: string }): R
       <section className="card" aria-label="Run result">
         {succeeded ? (
           <p className="alert-success" role="status" data-semid="run-succeeded">
-            {skillName ?? record.skillId} ran successfully. Business state verified.
+            Done — Muse for SMB finished {skillName ?? record.skillId} and verified the result.
           </p>
         ) : record.status === 'escalated' ? (
           <p className="alert-warn" role="status" data-semid="run-escalated">
-            Ghost handed this case back to you instead of guessing.
+            Muse for SMB handed this case back to you instead of guessing.
           </p>
         ) : (
           <p className="alert-warn" role="status" data-semid="run-ended">
