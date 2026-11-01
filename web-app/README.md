@@ -2,8 +2,26 @@
 
 Two systems with a vendor boundary between them. See `build-plan.md` for the full specification.
 
-- **Saltbreak** (`apps/saltbreak`, port 3000) is the fictional customer: an independent surf shop with a storefront, cart, simulated checkout, and staff tools for supplier intake, catalog staging, orders, inventory, and support inbox. It runs on its own database and never imports Atlas code.
-- **Atlas** (`apps/atlas`, port 3001) is the product: company graph, recordings, skills, runs, and recommendations. It runs on a separate database and operates Saltbreak only through its real interfaces, via the worker.
+- **Saltbreak** (`apps/saltbreak`, port 3000) is the fictional customer: an independent surf shop with a storefront, cart, simulated checkout, and staff tools for supplier intake, catalog staging, orders, inventory, support inbox, payments reconciliation (TidePay), and a Books ledger. It runs on its own database and never imports Atlas or Muse for SMB code.
+- **Atlas** (`apps/atlas`, port 3001) is the original product surface: company graph, recordings, skills, runs, and recommendations. It runs on a separate database and operates Saltbreak only through its real interfaces, via the worker.
+- **Muse for SMB** (`../desktop-app`) is the current product: an Electron partner panel that learns Saltbreak workflows from demonstrations and operates the shop through its real UI. It lives outside this workspace and never imports Saltbreak code.
+
+## The Muse for SMB boundary
+
+Saltbreak is operated, never owned:
+
+- Staff UI elements carry stable automation hooks (`data-semid`,
+  `data-ticket-id`) so Muse for SMB's recorder and runner can replay real
+  clicks, fills, and submits against the live pages.
+- Every business state change appends to an append-only event log
+  (`packages/saltbreak-data/src/events.ts`): orders, ticket opens/resolutions,
+  stock changes, emails, payments.
+- `GET /api/activity?since=<eventId>` is a read-only connector over that log,
+  with ticket events enriched (subject/body/status). The Today briefing in
+  Muse for SMB clusters those events into work it can run or hand back.
+- Demo seeds are synthetic and resettable: the after-hours support pile
+  (T-201 to T-208, including the T-207 bank chargeback) and the TidePay
+  payout scenarios (PO-1043 to PO-1045) come from `pnpm db:reset`.
 
 ## Layout
 
@@ -45,8 +63,9 @@ pnpm worker   # worker health on http://localhost:3101/health
 ```
 
 Saltbreak routes: `/` storefront home, `/shop`, `/product/[sku]`, `/cart`,
-`/checkout`, `/order/[id]`, and staff tools under `/staff/` (supplier,
-catalog, preview, assets, orders, inventory, inbox, customers, outbox, activity).
+`/checkout`, `/order/[id]`, staff tools under `/staff/` (supplier, catalog,
+preview, assets, orders, inventory, inbox, customers, outbox, activity,
+payments, books, promos), and the read-only `GET /api/activity` connector.
 
 Atlas routes: `/`, `/atlas`, `/workflows`, `/recordings`, `/skills`, `/runs`.
 
@@ -73,6 +92,8 @@ Atlas routes: `/`, `/atlas`, `/workflows`, `/recordings`, `/skills`, `/runs`.
 
 ## Next step
 
-Gate zero (per `build-plan.md`): one Eve→Meta round trip, one SAM mask,
-one Wonder browser action driving Saltbreak's staff UI, one draft saved
-and verified.
+Saltbreak's active consumer is Muse for SMB in `../desktop-app` — see its
+README for the demo scripts (Today briefing, the Vacation) that run against
+this shop. Gate zero (per `build-plan.md`) still tracks the Atlas path: one
+Eve→Meta round trip, one SAM mask, one Wonder browser action driving
+Saltbreak's staff UI, one draft saved and verified.

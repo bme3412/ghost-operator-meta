@@ -4,6 +4,29 @@ Electron app that learns a web workflow from a demonstration.
 
 > Show me how you do this. Inspect what I learned. Use it on the next case.
 
+Muse for SMB is an AI business partner for a small shop. It watches how the
+business runs, notices repeatable work, learns the owner's approach from
+demonstrations and spoken rules, executes approved tasks, and brings
+unfamiliar decisions back to the owner. The demo business is Saltbreak
+Surf Co. (`web-app`).
+
+## The panel
+
+- **Today** — a daily briefing. *Needs your judgment* (amber) holds cases no
+  rule covers; *Ready when you are* holds clustered work a learned playbook
+  can run, each with a "Because…" precedent line and a preview of exactly
+  which records it will touch; *Earlier* reports finished work.
+- **Teaching** — show Muse for SMB a task once in the website, add notes or
+  spoken rules, then check what it learned before anything is saved.
+- **My playbook** — the routines Muse for SMB knows (with demonstrations and
+  an evidence map under "How Muse for SMB sees your shop").
+- **Activity** — every run and batch, in plain language.
+- **Completion** — after work runs, a short report: what is done, and what
+  still needs your judgment. Batches can also push that report to the
+  owner's phone (ntfy) with a signed "while you were away" page.
+
+Settings live in the panel's overflow (⋯) menu.
+
 **Scope (first release):** this app operates the Saltbreak web app (`web-app`,
 the fictional surf shop) loaded in its target window. Arbitrary websites,
 desktop applications, browser extensions, OS accessibility automation, and
@@ -30,7 +53,7 @@ Muse for SMB drives Saltbreak through its real UI, so both run together:
 # Terminal 1: the target web app
 cd web-app && pnpm install && pnpm db:seed && pnpm dev:saltbreak   # http://localhost:3000
 
-# Terminal 2: Ghost Operator
+# Terminal 2: Muse for SMB
 cd desktop-app && pnpm dev        # target website + Muse for SMB panel
 ```
 
@@ -41,7 +64,7 @@ pnpm build      # production bundle to out/
 pnpm preview    # launch the production bundle
 ```
 
-If Saltbreak is not running, the panel's Home view shows the connection
+If Saltbreak is not running, the panel's Today view shows the connection
 status with setup commands, and the target window shows a self-updating
 offline page that opens Saltbreak as soon as it listens.
 
@@ -86,25 +109,25 @@ environment variables always win over that file. Packaged builds read
 | `TRANSCRIBE_API_KEY` | — | Transcription key; without it the mic returns a canned transcript |
 | `TRANSCRIBE_MODEL` | `whisper-1` | Transcription model id |
 
-## Demo script: the Now feed (3 minutes)
+## Demo script: the Today briefing (3 minutes)
 
-Home is the Today briefing: Muse for SMB watches Saltbreak's business events, clusters
+Today is the daily briefing: Muse for SMB watches Saltbreak's business events, clusters
 repeatable work, and offers the next safe action. Preconditions:
 `pnpm dev:saltbreak` running and `pnpm db:reset` done, so the after-hours
 pile (T-201 to T-208) is open.
 
 1. **0:00 — The pile, noticed.** Open Muse for SMB. Under **Ready when you are**: "3
    damaged-shipment tickets" and "3 wrong-size tickets", each with a
-   "Because…" line citing Maya's rules. Under **Needs you**: the T-207 bank
+   "Because…" line citing Maya's rules. Under **Needs your judgment**: the T-207 bank
    chargeback — no rule covers it.
 2. **0:40 — Preview before anything runs.** Click **Preview** on the damaged
    cluster: exactly T-203, T-205, T-208 and the skill that will handle them.
 3. **1:10 — Approve one batch.** **Run on 3**. Muse for SMB refunds each case,
    quoting the rule it used; the batch summary counts down on screen.
-4. **2:00 — The feed updates itself.** Back on Home, the damaged cluster is
-   gone, **Recent activity** shows "batch finished — 3 resolved", and T-207
-   is still waiting under Needs you. Nothing ran without a preview.
-5. **2:30 — Close on the map.** Library → Task map: the same skill as one
+4. **2:00 — The feed updates itself.** Back on Today, the damaged cluster is
+   gone, **Earlier** shows "batch finished — 3 resolved", and T-207
+   is still waiting under Needs your judgment. Nothing ran without a preview.
+5. **2:30 — Close on the map.** My playbook → How Muse for SMB sees your shop: the same skill as one
    plain-language spine, suggestions underneath — activity, learned rules,
    automation, and evidence as one system.
 
@@ -124,7 +147,7 @@ site is up only captures the "Saltbreak unreachable" offline page. Then
 `pnpm db:reset` (seeds the after-hours pile T-201 to T-208), set `NTFY_TOPIC`
 in `.env.local`, subscribe to that topic in the ntfy phone app, and put the
 phone on the same Wi-Fi as the laptop. The panel stays docked (420px) for
-teaching; it expands only for the closing Library shot, where both windows
+teaching; it expands only for the closing playbook shot, where both windows
 reflow side by side automatically — never drag windows by hand on camera.
 
 Timed beats (3 minutes):
@@ -146,9 +169,9 @@ Timed beats (3 minutes):
    **Run on many**, click **Find open cases on this page**, then
    **Run on 7 cases**.
 6. **2:00 — Muse for SMB works.** T-202 to T-208 run one by one. Each refund or
-   exchange quotes the rule it used; T-207 ends as "Needs you" because no
+   exchange quotes the rule it used; T-207 ends as "Needs your judgment" because no
    rule covers a chargeback.
-7. **2:40 — The map (expanded).** Open **Library → Task map**. The windows
+7. **2:40 — The map (expanded).** Open **My playbook → How Muse for SMB sees your shop**. The windows
    reflow on camera: Saltbreak left, Muse for SMB right. The playbook reads as one
    spine — Inputs, steps in plain language, Verification — with Suggestions
    underneath. This is the closing frame.
@@ -156,18 +179,18 @@ Timed beats (3 minutes):
    needs you." Tapping it opens the away page with T-207 at the top.
 
 No Saltbreak reset? The curated starter **Handle after-hours support tickets**
-on Home loads the same skill without a demonstration.
+in Teach loads the same playbook without a demonstration.
 
 ## Demo script (the first complete experience)
 
 A fresh install on Saltbreak comes with three starter skills already
-published, and the site is scanned once automatically, so Home and the Task
-map are populated on first launch. Starter cards open run setup directly —
-the steps below teach your own skill alongside them, and **Save and publish**
-still creates that taught skill as a separate entry.
+published, and the site is scanned once automatically, so Today and the shop
+map are populated on first launch. Starter cards (in Teach) open run setup directly —
+the steps below teach your own playbook alongside them, and **Save and publish**
+still creates that taught playbook as a separate entry.
 
-1. Confirm the green target connection on Home.
-2. Click **Teach a new task** and name the goal, e.g. `Resolve a support ticket`.
+1. Confirm the green target connection on Today.
+2. Click **Teach Muse for SMB a task** and name the goal, e.g. `Resolve a support ticket`.
 3. Demonstrate resolving a ticket: Staff → Support inbox → **resolved** on `T-101`.
 4. Click **Add note** and explain a decision.
 5. Click **Finish** — the draft procedure generates itself for review.
@@ -177,17 +200,18 @@ still creates that taught skill as a separate entry.
 9. Step through (guide) or watch (assisted) as the new ticket is resolved.
 10. Verify: the ticket status in Saltbreak, and the checks on the result view.
 11. Click **Run on another case** to reuse the skill again, or **See details**
-    for the readable record in Library → Runs.
+    for the readable record in Activity.
 
-Discover (no demo needed): open Library → Task map → **Site** → **Scan site**,
+Discover (no demo needed): open My playbook → How Muse for SMB sees your shop → **Site** → **Scan site**,
 watch `/staff/inbox` land in the page graph, then read the mined follow-ups
 in Suggestions — e.g. `Automate submission on /staff/inbox`. Click **Teach this**
 on one to open Teach with its goal prefilled.
 
 ## Architecture
 
-- Two windows: target (Saltbreak web app) and the Muse for SMB panel (Today, Teach,
-  recording, review, run, Library, Settings). The panel widens for the Library.
+- Two windows: target (Saltbreak web app) and the Muse for SMB panel (Today,
+  Teaching, run, My playbook, Activity, Settings in the overflow menu). The
+  panel widens for My playbook and Activity.
 - The target page is observed, never owned: a preload capture layer records
   committed DOM events; the runner replays real clicks/fills/submits and
   verifies by reading the live page. Muse for SMB never imports Saltbreak code.
@@ -216,9 +240,10 @@ on one to open Teach with its goal prefilled.
 ## Layout
 
 - `src/main/` — windows, IPC, target config, store, recorder, compiler,
-  runner, providers, skills
+  runner, providers, skills, activity feed, batches, away page
 - `src/preload/` — typed IPC bridge (`window.ghost`) + target-page capture
 - `src/shared/` — Zod schemas, target definition, skill formatting, policy
-- `src/renderer/` — panel views, library sections, and the target-offline page
+- `src/renderer/` — Muse for SMB panel (Today, Teaching, playbook, activity),
+  and the target-offline page
 - `tests/unit/` — Vitest recorder/compiler/skills/runner tests
 - `tests/e2e/` — Playwright Electron tests (boots Saltbreak on :3100)
