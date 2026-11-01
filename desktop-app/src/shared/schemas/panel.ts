@@ -19,6 +19,7 @@ export const PANEL_VIEWS = [
   'runSetup',
   'running',
   'result',
+  'batch',
   'library',
   'settings'
 ] as const
@@ -35,6 +36,7 @@ export const PanelNavigateParams = z.object({
   recordingId: z.string().min(1).optional(),
   skillId: z.string().min(1).optional(),
   runId: z.string().min(1).optional(),
+  batchId: z.string().min(1).optional(),
   goal: z.string().optional(),
   libraryTab: z.enum(LIBRARY_TABS).optional()
 })

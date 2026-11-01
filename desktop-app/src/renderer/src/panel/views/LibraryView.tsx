@@ -3,21 +3,24 @@ import { MapSection } from '../../library/MapSection'
 import { RecordingsSection } from '../../library/RecordingsSection'
 import { RunsSection } from '../../library/RunsSection'
 import { SkillsSection } from '../../library/SkillsSection'
-import type { LibraryTab } from '../nav'
+import type { LibraryTab, OnNav } from '../nav'
 
+/** Workflow order: demonstrate, compile, run, then inspect the map. */
 const TABS: Array<{ id: LibraryTab; label: string }> = [
+  { id: 'recordings', label: 'Recordings' },
   { id: 'skills', label: 'Skills' },
   { id: 'runs', label: 'Runs' },
-  { id: 'recordings', label: 'Recordings' },
   { id: 'map', label: 'Task map' }
 ]
 
 export function LibraryView({
   tab,
-  focusId
+  focusId,
+  onNav
 }: {
   tab: LibraryTab
   focusId?: string
+  onNav: OnNav
 }): React.JSX.Element {
   const [active, setActive] = useState<LibraryTab>(tab)
   const [focusSkill, setFocusSkill] = useState<string | null>(null)
@@ -47,19 +50,22 @@ export function LibraryView({
         ))}
       </nav>
       {active === 'skills' && (
-        <SkillsSection focusId={focusSkill} onNavigate={() => setActive('recordings')} />
+        <SkillsSection focusId={focusSkill} onTeach={() => onNav({ view: 'teach' })} />
       )}
-      {active === 'runs' && <RunsSection focusId={focusRun} />}
+      {active === 'runs' && (
+        <RunsSection focusId={focusRun} onRunSkill={() => onNav({ view: 'runSetup' })} />
+      )}
       {active === 'recordings' && (
         <RecordingsSection
           focusId={focusRecording}
+          onTeach={() => onNav({ view: 'teach' })}
           onSkillSaved={(skillId) => {
             setFocusSkill(skillId)
             setActive('skills')
           }}
         />
       )}
-      {active === 'map' && <MapSection />}
+      {active === 'map' && <MapSection onShowSkills={() => setActive('skills')} />}
     </div>
   )
 }

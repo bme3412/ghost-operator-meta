@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RecorderLastEvent, RecorderStatePush } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
+import { MicButton } from '../../components/MicButton'
 import { friendlyError } from '../../lib/errors'
 
 const NUDGE_TYPES: ReadonlySet<string> = new Set(['input_commit', 'select'])
@@ -25,6 +26,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
   const [now, setNow] = useState(() => Date.now())
   const [noteOpen, setNoteOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
+  const [micNotice, setMicNotice] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [targetName, setTargetName] = useState('website')
@@ -154,9 +156,25 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
               rows={3}
               value={noteText}
               onChange={(event) => setNoteText(event.target.value)}
-              placeholder="e.g. Quantity comes from the case request, not the order."
+              placeholder="e.g. Damaged in shipping means refund. Wrong size means exchange. Anything else, ask me."
             />
+            {micNotice !== null && (
+              <p className="muted" data-semid="note-mic-notice">
+                {micNotice}
+              </p>
+            )}
             <div className="note-actions">
+              <MicButton
+                onTranscript={(text, source) => {
+                  setNoteText((current) => (current.trim() ? `${current.trim()} ${text}` : text))
+                  setMicNotice(
+                    source === 'canned'
+                      ? 'No transcription key is set, so Ghost filled in a sample rule. Edit it before saving.'
+                      : 'Check the transcript, then save the note.'
+                  )
+                }}
+                onError={(message) => setError(message)}
+              />
               <Button
                 variant="primary"
                 data-testid="note-save"
@@ -165,6 +183,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
                     window.ghost.recorder.addNote(noteText).then(() => {
                       setNoteOpen(false)
                       setNoteText('')
+                      setMicNotice(null)
                     })
                   )
                 }
@@ -176,6 +195,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
                 onClick={() => {
                   setNoteOpen(false)
                   setNoteText('')
+                  setMicNotice(null)
                 }}
               >
                 Cancel

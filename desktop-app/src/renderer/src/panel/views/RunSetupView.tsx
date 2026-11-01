@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RunMode, Skill, SkillSummary } from '../../../../shared/schemas'
 import { isUnfamiliarSiteId } from '../../../../shared/capture/sites'
+import { recipeInputKeys } from '../../../../shared/skills/inputs'
 import { countReviewItems } from '../../../../shared/skills/review'
 import { Button } from '../../components/Button'
 import { friendlyError } from '../../lib/errors'
@@ -9,20 +10,11 @@ import type { OnNav } from '../nav'
 
 const LAST_SKILL_KEY = 'ghost:lastSkillId'
 
-/** Input keys a recipe needs, scanned from {{inputs.*}} placeholders. */
+/** Input keys the active version needs from the person starting the run. */
 function collectInputs(skill: Skill | null): string[] {
   if (!skill || skill.activeVersion === null) return []
   const record = skill.versions.find((v) => v.version === skill.activeVersion)
-  if (!record) return []
-  const haystack = JSON.stringify({
-    bindings: record.recipe.steps.map((s) => s.bindings),
-    checks: record.recipe.steps.map((s) => s.checks)
-  })
-  const keys = new Set<string>()
-  for (const match of haystack.matchAll(/\{\{\s*(?:inputs\.)?([A-Za-z0-9_]+)\s*\}\}/g)) {
-    if (match[1]) keys.add(match[1])
-  }
-  return [...keys]
+  return record ? recipeInputKeys(record.recipe) : []
 }
 
 export function RunSetupView({
@@ -45,6 +37,9 @@ export function RunSetupView({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [siteId, setSiteId] = useState<string | undefined>(undefined)
+  const [scope, setScope] = useState<'one' | 'many'>('one')
+  const [caseList, setCaseList] = useState('')
+  const [finding, setFinding] = useState(false)
   const initialSkillApplied = useRef(false)
 
   useEffect(() => {
@@ -99,24 +94,55 @@ export function RunSetupView({
   const unfamiliar = siteId !== undefined && isUnfamiliarSiteId(siteId)
   const recommended: RunMode = reviewCount > 0 || unfamiliar ? 'guide' : 'assisted'
   const effectiveMode = modeTouched && mode !== null ? mode : recommended
+  // "Run on many" binds each case id to the case input; ticket skills say so.
+  const caseKey = needed.includes('ticketId') ? 'ticketId' : (needed[0] ?? null)
+  const many = scope === 'many' && caseKey !== null
+  const caseIds = caseList
+    .split(/[\s,]+/)
+    .map((id) => id.trim())
+    .filter((id) => id !== '')
   // Start requires the loaded skill: without it `needed` is empty and every
   // input trivially "passes", which would start a doomed run.
   const ready =
     selectedId !== '' &&
     skill !== null &&
     !skillLoading &&
-    needed.every((key) => (inputs[key] ?? '').trim() !== '')
+    (many
+      ? caseIds.length > 0 &&
+        needed.every((key) => key === caseKey || (inputs[key] ?? '').trim() !== '')
+      : needed.every((key) => (inputs[key] ?? '').trim() !== ''))
+
+  const findOpenCases = (): void => {
+    setFinding(true)
+    setError(null)
+    window.ghost.batches
+      .openCases()
+      .then((ids) => {
+        if (ids.length === 0) setError('No open cases on this page. Open the support inbox first.')
+        else setCaseList(ids.join(', '))
+      })
+      .catch((err: unknown) => setError(friendlyError(err)))
+      .finally(() => setFinding(false))
+  }
 
   const start = (): void => {
     if (!ready) return
     setBusy(true)
     setError(null)
-    window.ghost.runs
-      .start({ skillId: selectedId, mode: effectiveMode, inputs })
-      .catch((err: unknown) => {
-        setError(friendlyError(err))
-        setBusy(false)
-      })
+    const failed = (err: unknown): void => {
+      setError(friendlyError(err))
+      setBusy(false)
+    }
+    if (many && caseKey !== null) {
+      const sharedInputs = Object.fromEntries(
+        Object.entries(inputs).filter(([key]) => key !== caseKey && needed.includes(key))
+      )
+      window.ghost.batches
+        .start({ skillId: selectedId, inputKey: caseKey, caseIds, sharedInputs })
+        .catch(failed)
+      return
+    }
+    window.ghost.runs.start({ skillId: selectedId, mode: effectiveMode, inputs }).catch(failed)
     // The panel switches to the running view from the run push.
   }
 
@@ -160,7 +186,64 @@ export function RunSetupView({
                 ))}
               </select>
             </div>
-            {needed.map((key) => (
+            {caseKey !== null && (
+              <fieldset className="mode-options">
+                <legend>Which cases?</legend>
+                <label className="mode-option">
+                  <input
+                    type="radio"
+                    name="run-scope"
+                    data-semid="scope-one"
+                    checked={scope === 'one'}
+                    onChange={() => setScope('one')}
+                  />
+                  <span>
+                    <strong>One case</strong>
+                  </span>
+                </label>
+                <label className="mode-option">
+                  <input
+                    type="radio"
+                    name="run-scope"
+                    data-semid="scope-many"
+                    checked={scope === 'many'}
+                    onChange={() => setScope('many')}
+                  />
+                  <span>
+                    <strong>Run on many</strong>
+                    <span className="muted">
+                      {' '}
+                      — Ghost works through each case on its own and tells you how it went.
+                    </span>
+                  </span>
+                </label>
+              </fieldset>
+            )}
+            {many && (
+              <div className="field">
+                <label htmlFor="run-case-list">{humanizeKey(caseKey)}s</label>
+                <textarea
+                  id="run-case-list"
+                  data-semid="run-case-list"
+                  rows={3}
+                  value={caseList}
+                  placeholder="e.g. T-202, T-203"
+                  onChange={(event) => setCaseList(event.target.value)}
+                />
+                <Button data-semid="find-open-cases" disabled={finding} onClick={findOpenCases}>
+                  {finding ? 'Looking…' : 'Find open cases on this page'}
+                </Button>
+                {caseIds.length > 0 && (
+                  <p className="muted" data-semid="run-case-count">
+                    {caseIds.length} case{caseIds.length === 1 ? '' : 's'}. Ghost runs each one in “Do
+                    it for me” mode and hands back anything your rules don’t cover.
+                  </p>
+                )}
+              </div>
+            )}
+            {needed
+              .filter((key) => !(many && key === caseKey))
+              .map((key) => (
               <div className="field" key={key}>
                 <label htmlFor={`run-input-${key}`}>{humanizeKey(key)}</label>
                 <input
@@ -187,6 +270,7 @@ export function RunSetupView({
                   : 'This site is unfamiliar — guided mode is recommended: you confirm each step.'}
               </p>
             )}
+            {!many && (
             <fieldset className="mode-options">
               <legend>How should Ghost run it?</legend>
               <label className="mode-option">
@@ -226,6 +310,7 @@ export function RunSetupView({
                 </span>
               </label>
             </fieldset>
+            )}
             <div className="field">
               <Button
                 variant="primary"
@@ -234,7 +319,7 @@ export function RunSetupView({
                 disabled={busy || !ready}
                 onClick={start}
               >
-                {busy ? 'Starting…' : 'Start run'}
+                {busy ? 'Starting…' : many ? `Run on ${caseIds.length || 'all'} cases` : 'Start run'}
               </Button>
             </div>
           </div>

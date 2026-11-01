@@ -6,6 +6,7 @@ import {
   addReply,
   importPayoutCsv,
   refundLine,
+  resolveTicket,
   sendEmail,
   sendToBooks,
   setCell,
@@ -28,6 +29,14 @@ export async function ticketAction(form: FormData): Promise<void> {
   const status = String(form.get('status') ?? 'open');
   if (id) setTicketStatus(id, status);
   revalidatePath('/staff/inbox');
+}
+
+export async function resolveTicketAction(form: FormData): Promise<void> {
+  const id = String(form.get('id') ?? '');
+  const resolution = String(form.get('resolution') ?? '');
+  if (id && resolution) resolveTicket(id, resolution);
+  revalidatePath('/staff/inbox');
+  revalidatePath('/staff/outbox');
 }
 
 export async function replyAction(form: FormData): Promise<void> {

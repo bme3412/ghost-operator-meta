@@ -9,15 +9,29 @@ import type {
   SkillStep,
   StartRunRequest
 } from '../../shared/schemas'
+import { ESCALATE } from '../../shared/schemas/run'
 import { assertRecipeValid } from '../../shared/policy/recipe'
-import { evaluateCheck, resolvePlaceholders, type DomQuery } from './checks'
+import type { DecideRequest, Decision } from '../providers/decide'
+import {
+  evaluateCheck,
+  resolvePlaceholders,
+  resolveSelectorPlaceholders,
+  type DomQuery
+} from './checks'
 import {
   executeComputerTask,
   resolveBindings,
   selectorForStep,
   type DomAct
 } from './operations'
-import { waitForStepChecks } from './wait'
+import { SELECTOR_READY_TIMEOUT_MS, waitForAnySelector, waitForStepChecks } from './wait'
+
+/** Batch position of a run started from "Run on many". */
+export interface RunBatchRef {
+  id: string
+  index: number
+  total: number
+}
 
 export interface RunnerDeps {
   now: () => number
@@ -33,6 +47,8 @@ export interface RunnerDeps {
   persistRun: (record: RunRecord) => void
   onProgress: (progress: RunProgress | null) => void
   highlight: (selector: string | null) => void
+  /** Judgment calls for decide steps. Runs reaching a decide step without it fail. */
+  decide?: (request: DecideRequest) => Promise<Decision>
   /** Overrideable sleep for check waits; defaults to a setTimeout sleep. */
   sleep?: (ms: number) => Promise<void>
   /** Override the bounded check-wait budget; defaults live in ./wait. */
@@ -45,18 +61,20 @@ interface ActiveRun {
   record: RunRecord
   recipe: SkillRecipe
   skillName: string
+  batch?: RunBatchRef
 }
 
-const TERMINAL: ReadonlySet<ExecutionStatus> = new Set([
+export const TERMINAL: ReadonlySet<ExecutionStatus> = new Set([
   'succeeded',
   'failed',
-  'cancelled'
+  'cancelled',
+  'escalated'
 ])
 
 /** Explicit execution state machine. One active run at a time. */
 export function createRunner(deps: RunnerDeps): {
   getProgress: () => RunProgress | null
-  startRun: (request: StartRunRequest) => RunProgress
+  startRun: (request: StartRunRequest, options?: { batch?: RunBatchRef }) => RunProgress
   pauseRun: (runId: string) => RunProgress
   resumeRun: (runId: string) => RunProgress
   stopRun: (runId: string) => RunProgress
@@ -101,13 +119,15 @@ export function createRunner(deps: RunnerDeps): {
       expected: step.expected,
       bindings,
       checks: step.checks.map((c) => c.name),
+      ...(step.rules ? { rules: step.rules } : {}),
+      ...(step.options ? { options: step.options } : {}),
       status: index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'todo'
     }
   }
 
   function progress(): RunProgress | null {
     if (!active) return null
-    const { record, recipe, skillName } = active
+    const { record, recipe, skillName, batch } = active
     const steps = recipe.steps.map((step, index) =>
       stepView(step, index, record.currentStepIndex, record.inputs)
     )
@@ -122,7 +142,10 @@ export function createRunner(deps: RunnerDeps): {
       current: steps[record.currentStepIndex] ?? null,
       steps,
       checks: record.checks,
+      decisions: record.decisions,
       awaitingApproval: record.awaitingApproval,
+      ...(record.escalation !== undefined ? { escalation: record.escalation } : {}),
+      ...(batch ? { batch } : {}),
       error: record.error
     }
   }
@@ -211,8 +234,71 @@ export function createRunner(deps: RunnerDeps): {
     return active === run && !TERMINAL.has(run.record.status)
   }
 
+  /**
+   * Read the case from the live page and let the decision provider apply the
+   * demonstrator's rules. A covered case writes its choice into the run
+   * inputs; anything else ends the run as escalated, never as a guess.
+   */
+  async function executeDecideStep(
+    run: ActiveRun,
+    step: SkillStep
+  ): Promise<'decided' | 'escalated'> {
+    if (!deps.decide) throw new Error(`Step "${step.id}" needs a decision provider.`)
+    const options = step.options ?? []
+    const rules = step.rules ?? []
+    const writes = step.writes
+    const rawSelector = step.bindings['readSelector']
+    if (!writes || !rawSelector) throw new Error(`Step "${step.id}" is an incomplete decide step.`)
+    const selector = resolveSelectorPlaceholders(rawSelector, run.record.inputs)
+    const timeoutMs = deps.readyWait?.timeoutMs ?? SELECTOR_READY_TIMEOUT_MS
+    const ready = await waitForAnySelector([selector], deps.domQuery, {
+      timeoutMs,
+      pollMs: deps.readyWait?.pollMs,
+      sleep: deps.sleep
+    })
+    const text = ready ? await deps.domQuery.text(selector) : null
+    if (text === null) {
+      throw new Error(`Step "${step.id}" could not read the case: no match for ${selector}.`)
+    }
+    const evidence = text.replace(/\s+/g, ' ').trim().slice(0, 2000)
+    const decision = await deps.decide({ goal: run.recipe.goal, rules, options, text: evidence })
+    if (!loopMayContinue(run)) return 'escalated'
+    const allowed = decision.choice === ESCALATE || options.includes(decision.choice)
+    const choice = allowed ? decision.choice : ESCALATE
+    const reason = allowed
+      ? decision.reason
+      : `Ghost suggested "${decision.choice}", which isn't one of your options, so it left this for you.`
+    run.record.decisions.push({
+      stepId: step.id,
+      choice,
+      rule: choice === ESCALATE ? null : decision.rule,
+      reason,
+      evidence,
+      at: new Date(deps.now()).toISOString()
+    })
+    run.record.attempts.push({
+      runId: run.record.id,
+      stepId: step.id,
+      attempt: run.record.attempts.filter((a) => a.stepId === step.id).length,
+      actions: [`decided ${choice}`],
+      observedOutcome: reason,
+      passed: choice !== ESCALATE
+    })
+    if (choice === ESCALATE) {
+      run.record.escalation = reason
+      finishTerminal(run, 'escalated')
+      return 'escalated'
+    }
+    run.record.inputs = { ...run.record.inputs, [writes]: choice }
+    return 'decided'
+  }
+
   async function executeAssistedStep(run: ActiveRun, step: SkillStep): Promise<void> {
     const attemptIndex = run.record.attempts.filter((a) => a.stepId === step.id).length
+    if (step.kind === 'decide') {
+      await executeDecideStep(run, step)
+      return
+    }
     if (step.kind === 'review') {
       run.record.awaitingApproval = true
       run.record.status = 'paused'
@@ -316,7 +402,7 @@ export function createRunner(deps: RunnerDeps): {
   return {
     getProgress: progress,
 
-    startRun(request: StartRunRequest): RunProgress {
+    startRun(request: StartRunRequest, options?: { batch?: RunBatchRef }): RunProgress {
       if (active && !TERMINAL.has(active.record.status)) {
         throw new Error(`Run ${active.record.id} is still ${active.record.status}.`)
       }
@@ -334,9 +420,11 @@ export function createRunner(deps: RunnerDeps): {
       const startedAtMs = deps.now()
       counter += 1
       const mode: RunMode = request.mode
+      const batch = options?.batch
       active = {
         recipe: found.recipe,
         skillName: found.skillName,
+        ...(batch ? { batch } : {}),
         record: {
           id: `run-${startedAtMs}-${counter}`,
           skillId: request.skillId,
@@ -348,7 +436,9 @@ export function createRunner(deps: RunnerDeps): {
           currentStepIndex: 0,
           attempts: [],
           checks: [],
-          awaitingApproval: false
+          decisions: [],
+          awaitingApproval: false,
+          ...(batch ? { batchId: batch.id } : {})
         }
       }
       deps.highlight(selectorForStep(currentStep(active), active.record.inputs))
@@ -400,6 +490,17 @@ export function createRunner(deps: RunnerDeps): {
           throw new Error('A run loop is driving this run.')
         }
         const step = currentStep(run)
+        if (step.kind === 'decide') {
+          // Guided runs still let Ghost make the call; the person then
+          // carries out the chosen action and Ghost checks it.
+          try {
+            const outcome = await executeDecideStep(run, step)
+            if (outcome === 'escalated') return currentProgressOrThrow()
+          } catch (error) {
+            return finishTerminal(run, 'failed', (error as Error).message)
+          }
+          return advanceIndex(run) ?? currentProgressOrThrow()
+        }
         const attemptIndex = run.record.attempts.filter((a) => a.stepId === step.id).length
         const checkResults = await evaluateStepChecks(run, step)
         const failed = checkResults.filter((c) => !c.passed)

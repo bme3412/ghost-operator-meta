@@ -39,6 +39,7 @@ export function getDb(): DatabaseSync {
   db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL');
   if (isNew) db.exec(SCHEMA_SQL);
+  else ensureColumn(db, 'tickets', 'resolution', 'TEXT');
   return db;
 }
 
@@ -47,11 +48,12 @@ export function migrate(): void {
   db.exec(SCHEMA_SQL);
   ensureColumn(db, 'tickets', 'order_number', 'TEXT');
   ensureColumn(db, 'tickets', 'customer_email', 'TEXT');
+  ensureColumn(db, 'tickets', 'resolution', 'TEXT');
 }
 
 function ensureColumn(db: DatabaseSync, table: string, column: string, ddl: string): void {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === column)) {
+  if (cols.length > 0 && !cols.some((c) => c.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
   }
 }

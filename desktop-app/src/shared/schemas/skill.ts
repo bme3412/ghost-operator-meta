@@ -6,7 +6,8 @@ export const StepKind = z.enum([
   'tool',
   'computer_task',
   'verify',
-  'review'
+  'review',
+  'decide'
 ])
 export type StepKind = z.infer<typeof StepKind>
 
@@ -35,7 +36,15 @@ export const SkillStep = z.object({
   selectorCandidates: z.array(z.string()).optional(),
   bindings: z.record(z.string(), z.string()).default({}),
   dataRefs: z.array(z.string()).default([]),
-  checks: z.array(CheckRef).default([])
+  checks: z.array(CheckRef).default([]),
+  /**
+   * Decide steps only: the demonstrator's rules in their own words, the
+   * choices Ghost may make, and the run input the choice is written to.
+   * Anything the rules don't cover escalates instead of guessing.
+   */
+  rules: z.array(z.string().min(1)).optional(),
+  options: z.array(z.string().regex(/^[a-z][a-z0-9_-]*$/)).optional(),
+  writes: z.string().regex(/^[A-Za-z][A-Za-z0-9_]*$/).optional()
 })
 export type SkillStep = z.infer<typeof SkillStep>
 

@@ -1,6 +1,7 @@
 import { assertRecipeValid } from '../../shared/policy/recipe'
 import { renderInstructions } from '../../shared/skills/format'
-import { TARGET } from '../../shared/target'
+import { SALTBREAK_STARTER_TASKS, TARGET } from '../../shared/target'
+import { scriptedProposal } from '../providers/fixture'
 import type {
   SaveDraftRequest,
   Skill,
@@ -159,4 +160,28 @@ export function getActiveVersion(skillId: string): SkillVersionRecord | null {
   const skill = getSkill(skillId)
   if (!skill || skill.activeVersion === null) return null
   return skill.versions.find((v) => v.version === skill.activeVersion) ?? null
+}
+
+/**
+ * Seed the curated Saltbreak starter skills exactly once per state file, so
+ * a fresh install opens to usable skills instead of an empty Library. Runs
+ * only for the Saltbreak target; the flag is set in the same final write so
+ * a starter the user deletes never comes back.
+ */
+export function seedStarterSkills(): void {
+  if (loadState().seededStarters) return
+  if (getTargetInfo().id !== TARGET.id) return
+  for (const task of SALTBREAK_STARTER_TASKS) {
+    const proposal = scriptedProposal(task.id)
+    if (!proposal) continue
+    const skill = saveDraft({
+      name: task.title,
+      recipe: proposal.recipe,
+      recordingIds: [],
+      providerId: 'fixture',
+      unresolved: proposal.unresolved
+    })
+    publishSkill(skill.id, 1)
+  }
+  saveState({ ...loadState(), seededStarters: true })
 }

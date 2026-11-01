@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Proposal } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
+import { RulesCard } from '../../components/Decisions'
 import { friendlyError } from '../../lib/errors'
 import { bindingSentences, demonstratedInputs, stepLabel } from '../../lib/humanize'
 import type { OnNav } from '../nav'
@@ -180,6 +181,9 @@ export function ReviewView({
                     <span className="muted"> — needs your review on each run</span>
                   )}
                   {step.why && <div className="muted">{step.why}</div>}
+                  {step.kind === 'decide' && step.rules && (
+                    <RulesCard rules={step.rules} options={step.options} />
+                  )}
                 </li>
               ))}
             </ol>

@@ -27,6 +27,7 @@ function populatedState(): PersistedState {
         status: 'succeeded',
         startedAt: new Date(0).toISOString(),
         currentStepIndex: 3,
+        decisions: [],
         attempts: [],
         checks: [],
         awaitingApproval: false
@@ -42,7 +43,7 @@ describe('versioned JSON store', () => {
 
   it('returns the default state when no file exists', () => {
     const state = loadStateFromFile(tempStatePath())
-    expect(state.schemaVersion).toBe(5)
+    expect(state.schemaVersion).toBe(6)
     expect(state.recordings).toEqual([])
     expect(state.skills).toEqual([])
     expect(state.runs).toEqual([])

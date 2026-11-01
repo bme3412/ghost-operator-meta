@@ -1,9 +1,30 @@
 import { app, BrowserWindow, screen } from 'electron'
+import { startAwayServer, stopAwayServer } from './away'
 import { loadLocalEnv } from './env'
 import { registerIpcHandlers } from './ipc'
+import { getScoutStatus, getSiteMap, startScan } from './scout/service'
+import { seedStarterSkills } from './skills'
+import { getTargetStatus } from './target'
 import { registerWindow } from './windows/registry'
 import { createPanelWindow, PANEL_DOCKED_WIDTH } from './windows/panel'
 import { createTargetWindow } from './windows/target'
+
+/**
+ * First-launch site scan: once the target answers and no sitemap exists yet,
+ * scan it in the background so Task map and suggestions are populated without
+ * a manual Rescan. Once per site per launch; manual rescans stay manual.
+ */
+async function scanSiteOnFirstLaunch(): Promise<void> {
+  try {
+    const status = await getTargetStatus()
+    if (!status.reachable) return
+    if (getSiteMap(status.id) !== null) return
+    if (getScoutStatus().running) return
+    startScan(status.id)
+  } catch {
+    // Scan is best-effort at launch; the user can always rescan manually.
+  }
+}
 
 /** Local .env.local first so providers/target see it; real env always wins. */
 loadLocalEnv()
@@ -31,7 +52,11 @@ function createAllWindows(): void {
 
 void app.whenReady().then(() => {
   registerIpcHandlers()
+  // Seed before windows exist so Home's first skills fetch sees the starters.
+  seedStarterSkills()
   createAllWindows()
+  startAwayServer()
+  void scanSiteOnFirstLaunch()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -39,6 +64,8 @@ void app.whenReady().then(() => {
     }
   })
 })
+
+app.on('will-quit', stopAwayServer)
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

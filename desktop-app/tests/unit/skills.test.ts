@@ -2,9 +2,10 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { getActiveVersion, getSkill, listSkills, publishSkill, saveDraft, updateDraft } from '../../src/main/skills/index'
+import { getActiveVersion, getSkill, listSkills, publishSkill, saveDraft, seedStarterSkills, updateDraft } from '../../src/main/skills/index'
 import { loadState, resetStoreCache, saveState } from '../../src/main/store/index'
 import type { SkillRecipe } from '../../src/shared/schemas'
+import { siteProfileForUrl } from '../../src/shared/target'
 
 function recipe(): SkillRecipe {
   return {
@@ -228,5 +229,61 @@ describe('skills store', () => {
     expect(() => publishSkill(skill.id, 1)).toThrow(/unknown check/)
     expect(getSkill(skill.id)?.activeVersion).toBeNull()
     expect(getSkill(skill.id)?.versions[0]?.status).toBe('draft')
+  })
+})
+
+describe('seedStarterSkills', () => {
+  beforeEach(() => {
+    process.env.GHOST_STATE_PATH = join(
+      mkdtempSync(join(tmpdir(), 'ghost-skills-')),
+      'state.json'
+    )
+    resetStoreCache()
+  })
+
+  afterEach(() => {
+    delete process.env.GHOST_STATE_PATH
+    resetStoreCache()
+  })
+
+  it('seeds the three Saltbreak starters as published skills', () => {
+    seedStarterSkills()
+    const skills = listSkills()
+    expect(skills.map((s) => s.name)).toEqual([
+      'Handle after-hours support tickets',
+      'Reconcile payout PO-1043 in Books',
+      'Answer ticket T-101 from product facts'
+    ])
+    for (const skill of skills) {
+      expect(skill.activeVersion).toBe(1)
+      expect(getActiveVersion(skill.id)?.recordingIds).toEqual([])
+    }
+    expect(loadState().seededStarters).toBe(true)
+  })
+
+  it('is a no-op on the second call', () => {
+    seedStarterSkills()
+    seedStarterSkills()
+    expect(listSkills()).toHaveLength(3)
+  })
+
+  it('does not resurrect a starter the user deleted', () => {
+    seedStarterSkills()
+    const state = loadState()
+    saveState({
+      ...state,
+      skills: state.skills.filter((s) => s.id !== 'answer-ticket-t-101-from-product-facts')
+    })
+    seedStarterSkills()
+    expect(listSkills().map((s) => s.id)).not.toContain('answer-ticket-t-101-from-product-facts')
+    expect(listSkills()).toHaveLength(2)
+  })
+
+  it('does nothing for a non-Saltbreak target', () => {
+    const state = loadState()
+    saveState({ ...state, currentSite: siteProfileForUrl('https://www.ebay.com') })
+    seedStarterSkills()
+    expect(listSkills()).toHaveLength(0)
+    expect(loadState().seededStarters).toBeUndefined()
   })
 })

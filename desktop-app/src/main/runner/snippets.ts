@@ -74,3 +74,22 @@ export function submitSnippet(selector: string): string {
   form.requestSubmit();
 })()`
 }
+
+/**
+ * Open-case probe: ids of `[data-ticket-id]` rows whose status hook reads
+ * "open", in page order. Read-only; capped so a huge page stays bounded.
+ */
+export function openCasesSnippet(): string {
+  return `(() => {
+  const out = [];
+  for (const row of document.querySelectorAll('[data-ticket-id]')) {
+    const id = row.getAttribute('data-ticket-id');
+    if (!id) continue;
+    const status = row.querySelector('[data-semid^="ticket-status-"]');
+    const text = (status?.textContent ?? '').trim().toLowerCase();
+    if (text.startsWith('open')) out.push(id.slice(0, 64));
+    if (out.length >= 50) break;
+  }
+  return out;
+})()`
+}

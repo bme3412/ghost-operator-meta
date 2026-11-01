@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   order_number TEXT,
   status TEXT NOT NULL DEFAULT 'open',
   body TEXT NOT NULL DEFAULT '',
+  resolution TEXT,
   created_at TEXT NOT NULL
 );
 

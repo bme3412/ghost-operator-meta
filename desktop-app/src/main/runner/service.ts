@@ -1,16 +1,19 @@
 import type { ProviderId, RunProgress } from '../../shared/schemas'
 import { EVENTS } from '../ipc/channels'
 import { broadcastLibraryChanged, sendToRoles } from '../ipc/broadcast'
+import { resolveProviderId } from '../providers'
+import { decide } from '../providers/decide'
 import { explainStep } from '../providers/explain'
 import { getActiveVersion, getSkill } from '../skills'
 import { upsertRun } from '../store'
 import { getTargetInfo, resolveTargetUrl } from '../target'
 import { isTargetNavigationAllowed } from '../windows/guards'
 import { getWindow } from '../windows/registry'
-import { createRunner, type Runner } from './index'
+import { createRunner, TERMINAL, type Runner } from './index'
 import {
   clickSnippet,
   fillSnippet,
+  openCasesSnippet,
   submitSnippet,
   textSnippet,
   valueSnippet,
@@ -72,12 +75,28 @@ async function domRead<T>(code: string): Promise<T> {
   }
 }
 
+type ProgressListener = (progress: RunProgress | null) => void
+const progressListeners = new Set<ProgressListener>()
+
+/** Observe every run transition in the main process. Returns an unsubscribe. */
+export function onRunProgress(listener: ProgressListener): () => void {
+  progressListeners.add(listener)
+  return () => progressListeners.delete(listener)
+}
+
 function broadcast(progress: RunProgress | null): void {
   // Run progress carries run inputs: the panel alone receives it.
   sendToRoles(['panel'], EVENTS.runProgress, progress)
-  if (progress && ['succeeded', 'failed', 'cancelled'].includes(progress.status)) {
+  if (progress && TERMINAL.has(progress.status)) {
     broadcastLibraryChanged()
   }
+  for (const listener of progressListeners) listener(progress)
+}
+
+/** Open case ids on the target page, in page order (support inbox rows). */
+export async function findOpenCases(): Promise<string[]> {
+  const ids = await domRead<unknown>(openCasesSnippet())
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
 }
 
 function highlight(selector: string | null): void {
@@ -152,7 +171,8 @@ export function getRunner(): Runner {
       },
       persistRun: upsertRun,
       onProgress: broadcast,
-      highlight
+      highlight,
+      decide: (request) => decide(request, resolveProviderId())
     })
   }
   return singleton

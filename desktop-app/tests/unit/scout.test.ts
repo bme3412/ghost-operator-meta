@@ -361,8 +361,8 @@ describe('site map store', () => {
     resetStoreCache()
   })
 
-  it('keeps siteMaps optional on the v5 store schema', () => {
-    expect(PersistedState.shape.schemaVersion.value).toBe(5)
+  it('keeps siteMaps optional on the current store schema', () => {
+    expect(PersistedState.shape.schemaVersion.value).toBe(6)
     expect(defaultState()).not.toHaveProperty('siteMaps')
     expect(PersistedState.parse(defaultState())).not.toHaveProperty('siteMaps')
     const map = siteMap()

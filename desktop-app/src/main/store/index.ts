@@ -14,6 +14,7 @@ import {
   PersistedState,
   defaultState,
   migrateState,
+  type BatchRecord,
   type RunRecord
 } from '../../shared/schemas'
 
@@ -141,6 +142,22 @@ export function listRuns(): RunRecord[] {
 
 export function getRun(runId: string): RunRecord | null {
   return loadState().runs.find((r) => r.id === runId) ?? null
+}
+
+export function listBatches(): BatchRecord[] {
+  return loadState().batches
+}
+
+export function getBatch(batchId: string): BatchRecord | null {
+  return loadState().batches.find((b) => b.id === batchId) ?? null
+}
+
+export function upsertBatch(record: BatchRecord): void {
+  const state = loadState()
+  const batches = state.batches.some((b) => b.id === record.id)
+    ? state.batches.map((b) => (b.id === record.id ? record : b))
+    : [...state.batches, record]
+  saveState({ ...state, batches })
 }
 
 export function upsertRun(record: RunRecord): void {

@@ -80,12 +80,36 @@ export function isSubframeNavigationAllowed(rawUrl: string, targetUrl: string): 
   }
 }
 
-/** Deny popups and permissions. Shared by every window. */
+/**
+ * WebContents ids allowed to use the microphone (the panel, for spoken
+ * notes). Windows can share one session, so the session-wide handler checks
+ * the requesting contents rather than trusting whichever window installed it.
+ */
+const micAllowed = new Set<number>()
+
+/**
+ * True when a permission request may be granted: audio-only capture from the
+ * panel. Everything else, including camera and any request from the target
+ * site, is denied. Pure; unit-tested.
+ */
+export function isPermissionAllowed(
+  contentsId: number,
+  permission: string,
+  mediaTypes: readonly string[] | undefined,
+  allowedIds: ReadonlySet<number> = micAllowed
+): boolean {
+  if (permission !== 'media' || !allowedIds.has(contentsId)) return false
+  const types = mediaTypes ?? []
+  return types.length > 0 && types.every((type) => type === 'audio')
+}
+
+/** Deny popups and permissions (bar panel audio). Shared by every window. */
 function denyPopupsAndPermissions(window: BrowserWindow): void {
   const contents = window.webContents
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  contents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(false)
+  contents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const mediaTypes = (details as { mediaTypes?: string[] } | undefined)?.mediaTypes
+    callback(isPermissionAllowed(webContents.id, permission, mediaTypes))
   })
 }
 
@@ -130,5 +154,6 @@ export function applyPanelGuards(window: BrowserWindow): void {
   }
   window.webContents.on('will-navigate', guard)
   window.webContents.on('will-redirect', guard)
+  if (typeof window.webContents.id === 'number') micAllowed.add(window.webContents.id)
   denyPopupsAndPermissions(window)
 }

@@ -1,4 +1,5 @@
-import type { SkillRecipe } from '../schemas/skill'
+import { ESCALATE } from '../schemas/run'
+import type { SkillRecipe, SkillStep } from '../schemas/skill'
 import { TARGET } from '../target'
 import { CHECK_PARAMS, isKnownCheck, isKnownTool } from './checks'
 
@@ -23,6 +24,9 @@ export function validateRecipe(recipe: SkillRecipe, scopeId: string = TARGET.id)
     }
     if (step.kind === 'verify' && step.checks.length === 0) {
       errors.push(`Step "${step.id}" is a verify step without checks.`)
+    }
+    if (step.kind === 'decide') {
+      errors.push(...validateDecideStep(step, recipe))
     }
     if (step.kind === 'computer_task') {
       const action = step.bindings['action']
@@ -55,6 +59,34 @@ export function validateRecipe(recipe: SkillRecipe, scopeId: string = TARGET.id)
       if (params?.expected && check.expected === undefined) {
         errors.push(`Step "${step.id}" check "${check.name}" needs an expected value.`)
       }
+    }
+  }
+  return errors
+}
+
+function validateDecideStep(step: SkillStep, recipe: SkillRecipe): string[] {
+  const errors: string[] = []
+  if (!step.bindings['readSelector']) {
+    errors.push(`Step "${step.id}" is a decide step without bindings.readSelector.`)
+  }
+  if (!step.rules || step.rules.length === 0) {
+    errors.push(`Step "${step.id}" is a decide step without rules.`)
+  }
+  if (!step.options || step.options.length === 0) {
+    errors.push(`Step "${step.id}" is a decide step without options.`)
+  } else if (step.options.includes(ESCALATE)) {
+    errors.push(`Step "${step.id}" lists "${ESCALATE}" as an option; escalation is always allowed.`)
+  }
+  if (!step.writes) {
+    errors.push(`Step "${step.id}" is a decide step without a "writes" input name.`)
+  } else {
+    const index = recipe.steps.indexOf(step)
+    const placeholder = new RegExp(`\\{\\{\\s*(?:inputs\\.)?${step.writes}\\s*\\}\\}`)
+    const usedEarlier = recipe.steps
+      .slice(0, index)
+      .some((s) => placeholder.test(JSON.stringify({ b: s.bindings, c: s.checks })))
+    if (usedEarlier) {
+      errors.push(`Step "${step.id}" writes "${step.writes}", but an earlier step already uses it.`)
     }
   }
   return errors

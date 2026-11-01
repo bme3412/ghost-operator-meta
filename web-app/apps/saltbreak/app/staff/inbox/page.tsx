@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { listOrders, listTickets } from '@saltbreak/data';
+import { listOrders, listTickets, TICKET_RESOLUTIONS } from '@saltbreak/data';
 import { Shell } from '../../shell';
-import { replyAction, ticketAction } from '../actions';
+import { replyAction, resolveTicketAction, ticketAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +17,18 @@ export default function InboxPage() {
               <span className="text-sm font-medium">{t.id}</span>
               <span className="flex-1 text-sm">{t.subject}</span>
               <span data-semid={`ticket-status-${t.id}`} className="text-xs text-neutral-500">{t.status}{t.sku ? ` · ${t.sku}` : ''}{t.customerEmail ? ` · ${t.customerEmail}` : ''}</span>
+              {t.resolution ? (
+                <span data-semid={`ticket-resolution-${t.id}`} className="bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-800">
+                  {t.resolution === 'refund' ? 'Refunded' : 'Exchange started'}
+                </span>
+              ) : null}
               {t.orderNumber && orderIdByNumber.get(t.orderNumber) !== undefined ? (
                 <Link href={`/staff/orders/${orderIdByNumber.get(t.orderNumber)}`} className="text-xs text-teal-800 hover:underline">
                   {t.orderNumber}
                 </Link>
               ) : null}
             </div>
-            <p className="mt-1 text-sm text-neutral-600">{t.body}</p>
+            <p data-semid={`ticket-body-${t.id}`} className="mt-1 text-sm text-neutral-600">{t.body}</p>
             {t.replies.length > 0 ? (
               <ul className="mt-2 space-y-1 border-l-2 border-neutral-200 pl-3">
                 {t.replies.map((r) => (
@@ -56,6 +61,25 @@ export default function InboxPage() {
                   </button>
                 </form>
               ))}
+              {t.orderNumber ? (
+                <>
+                  <span className="mx-1 self-center text-neutral-300" aria-hidden="true">|</span>
+                  {TICKET_RESOLUTIONS.map((r) => (
+                    <form key={r} action={resolveTicketAction}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="resolution" value={r} />
+                      <button
+                        type="submit"
+                        data-semid={`ticket-${r}-${t.id}`}
+                        disabled={t.resolution !== null}
+                        className="border border-teal-700 px-2 py-0.5 text-xs text-teal-800 disabled:opacity-40"
+                      >
+                        {r === 'refund' ? 'Refund' : 'Exchange'}
+                      </button>
+                    </form>
+                  ))}
+                </>
+              ) : null}
             </div>
           </li>
         ))}

@@ -6,6 +6,8 @@ import {
   demonstratedKey,
   demonstratedValue,
   humanizeKey,
+  runModeLabel,
+  runStatusLabel,
   stepLabel
 } from '../../src/renderer/src/lib/humanize'
 
@@ -69,5 +71,20 @@ describe('demonstrated helpers', () => {
     expect(demonstratedInputs({ 'Ticket "T-101"': 'inputs.ticketId' })).toEqual({
       ticketId: 'T-101'
     })
+  })
+})
+
+describe('run labels', () => {
+  it('maps modes to the run-setup wording', () => {
+    expect(runModeLabel('assisted')).toBe('Do it for me')
+    expect(runModeLabel('guide')).toBe('Guide me')
+    expect(runModeLabel('turbo')).toBe('Turbo')
+  })
+
+  it('maps statuses to plain words', () => {
+    expect(runStatusLabel('succeeded')).toBe('Succeeded')
+    expect(runStatusLabel('escalated')).toBe('Needs you')
+    expect(runStatusLabel('verifying')).toBe('Verifying')
+    expect(runStatusLabel('mystery_state')).toBe('Mystery State')
   })
 })

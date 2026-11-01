@@ -1,6 +1,7 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, systemPreferences, type IpcMainInvokeEvent } from 'electron'
 import { z } from 'zod'
 import { RecordingEventInput, StartRecordingRequest } from '../../shared/schemas'
+import { MAX_AUDIO_BYTES, transcribe } from '../providers/transcribe'
 import { getRecorder } from '../recorder/service'
 import { navigatePanel } from '../windows/registry'
 import { isDev } from '../windows/shared'
@@ -10,6 +11,10 @@ import { ALL_ROLES, APP_ROLES, TARGET_ONLY, assertSenderRole } from './sender'
 
 const ContextPayload = z.object({ caseId: z.string().min(1).nullable() })
 const NotePayload = z.object({ text: z.string().max(2000) })
+const TranscribePayload = z.object({
+  audio: z.instanceof(Uint8Array).refine((a) => a.byteLength <= MAX_AUDIO_BYTES, 'Audio clip is too large.'),
+  mimeType: z.string().regex(/^audio\/[a-z0-9.+-]+(;.*)?$/i).max(100)
+})
 
 export function registerRecorderHandlers(): void {
   const recorder = (): ReturnType<typeof getRecorder> => getRecorder()
@@ -63,6 +68,19 @@ export function registerRecorderHandlers(): void {
     assertSenderRole(event, CHANNELS.recorderNote, APP_ROLES)
     const { text } = NotePayload.parse(payload)
     return recorder().addNote(text)
+  })
+
+  ipcMain.handle(CHANNELS.recorderMicAccess, async (event: IpcMainInvokeEvent) => {
+    assertSenderRole(event, CHANNELS.recorderMicAccess, APP_ROLES)
+    if (process.platform !== 'darwin') return true
+    if (systemPreferences.getMediaAccessStatus('microphone') === 'granted') return true
+    return systemPreferences.askForMediaAccess('microphone')
+  })
+
+  ipcMain.handle(CHANNELS.recorderTranscribe, (event: IpcMainInvokeEvent, payload: unknown) => {
+    assertSenderRole(event, CHANNELS.recorderTranscribe, APP_ROLES)
+    const { audio, mimeType } = TranscribePayload.parse(payload)
+    return transcribe(audio, mimeType)
   })
 
   ipcMain.handle(CHANNELS.recorderFinish, async (event: IpcMainInvokeEvent) => {

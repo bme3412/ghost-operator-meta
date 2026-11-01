@@ -46,7 +46,6 @@ export function PageIdeas({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [starters, setStarters] = useState<StarterTask[]>([])
-  const [pagePath, setPagePath] = useState<string | null>(null)
   const requestId = useRef(0)
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
@@ -94,25 +93,14 @@ export function PageIdeas({
 
   useEffect(
     () =>
-      window.ghost.target.onPageChanged((page) => {
-        try {
-          setPagePath(new URL(page.url).pathname)
-        } catch {
-          setPagePath(null)
-        }
+      window.ghost.target.onPageChanged(() => {
         fetchIdeas(false)
       }),
     [fetchIdeas]
   )
 
-  // Owner starters on /staff/*, shopper starters on the storefront; while the
-  // page is still unknown, show everything rather than an empty card.
-  const areaStarters =
-    pagePath === null
-      ? starters
-      : starters.filter((task) =>
-          pagePath.startsWith('/staff/') ? task.audience === 'owner' : task.audience === 'shopper'
-        )
+  // Ghost works for the shop owner, so only owner starters are offered.
+  const areaStarters = starters.filter((task) => task.audience === 'owner')
   const rows = (result?.ideas ?? []).slice(0, MAX_ROWS)
 
   const body = (
@@ -154,9 +142,6 @@ export function PageIdeas({
                 onClick={() => onStarter(task)}
               >
                 <strong>{task.title}</strong>
-                <span className="audience">
-                  {task.audience === 'owner' ? 'For the shop owner' : 'For shoppers'}
-                </span>
                 <span aria-hidden="true">›</span>
               </button>
             </li>

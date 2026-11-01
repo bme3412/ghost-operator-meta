@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ProviderId, RunProgress } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
+import { DecisionList, RulesCard } from '../../components/Decisions'
 import { friendlyError } from '../../lib/errors'
 import { checkLabel, humanizeKey, stepLabel } from '../../lib/humanize'
 import { TERMINAL_RUN, type OnNav } from '../nav'
@@ -63,12 +64,32 @@ export function RunningView({
           {progress.skillName} v{progress.skillVersion} ·{' '}
           {guide ? 'Guide me' : 'Do it for me'} · {progress.status}
         </p>
+        {progress.batch && (
+          <p className="muted" data-semid="run-batch-progress">
+            Case {progress.batch.index + 1} of {progress.batch.total}
+            {progress.inputs['ticketId'] ? ` · ${progress.inputs['ticketId']}` : ''} ·{' '}
+            <button
+              type="button"
+              className="btn-link"
+              data-semid="run-batch-open"
+              onClick={() => onNav({ view: 'batch', batchId: progress.batch!.id })}
+            >
+              See all cases
+            </button>
+          </p>
+        )}
         {current && (
           <p className="muted" data-semid="run-progress">
             Step {current.index + 1} of {progress.steps.length}
           </p>
         )}
       </section>
+      {progress.decisions.length > 0 && (
+        <section className="card" aria-label="Ghost's decision">
+          <h2>Ghost's decision</h2>
+          <DecisionList decisions={progress.decisions} />
+        </section>
+      )}
       {error !== null && (
         <p className="alert-error" role="alert">
           {error}
@@ -94,6 +115,9 @@ export function RunningView({
               ))}
             </ul>
           )}
+          {current.kind === 'decide' && current.rules && (
+            <RulesCard rules={current.rules} options={current.options} />
+          )}
           {current.expected && <p className="muted">Expected: {current.expected}</p>}
           {explanation && <p data-semid="run-explanation">{explanation}</p>}
           <div className="field">
@@ -114,7 +138,7 @@ export function RunningView({
                 data-semid="run-next"
                 onClick={() => run(() => window.ghost.runs.advance(progress.runId))}
               >
-                Done — next step
+                {current.kind === 'decide' ? 'Let Ghost decide' : 'Done — next step'}
               </Button>
             )}
             {!progress.awaitingApproval && progress.status === 'paused' && (

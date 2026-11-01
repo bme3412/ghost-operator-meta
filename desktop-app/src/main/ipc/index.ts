@@ -1,3 +1,4 @@
+import { registerBatchHandlers } from './batches'
 import { registerProviderHandlers } from './providers'
 import { registerRecorderHandlers } from './recorder'
 import { registerRunHandlers } from './runs'
@@ -13,6 +14,7 @@ export function registerIpcHandlers(): void {
   registerProviderHandlers()
   registerRecorderHandlers()
   registerRunHandlers()
+  registerBatchHandlers()
   registerScoutHandlers()
   registerLibraryHandlers()
   registerSuggestHandlers()

@@ -215,9 +215,14 @@ export interface Ticket {
   customerEmail: string | null;
   status: string;
   body: string;
+  resolution: TicketResolution | null;
   createdAt: string;
   replies: TicketReply[];
 }
+
+export type TicketResolution = 'refund' | 'exchange';
+
+export const TICKET_RESOLUTIONS: readonly TicketResolution[] = ['refund', 'exchange'];
 
 function repliesFor(ticketId: string): TicketReply[] {
   const rows = getDb().prepare('SELECT * FROM ticket_replies WHERE ticket_id = ? ORDER BY id').all(ticketId) as Row[];
@@ -234,6 +239,7 @@ export function listTickets(): Ticket[] {
     customerEmail: row.customer_email === null || row.customer_email === undefined ? null : str(row.customer_email),
     status: str(row.status),
     body: str(row.body),
+    resolution: row.resolution === 'refund' || row.resolution === 'exchange' ? row.resolution : null,
     createdAt: str(row.created_at),
     replies: repliesFor(str(row.id)),
   }));
@@ -260,6 +266,37 @@ export function addReply(ticketId: string, body: string): { ok: boolean; message
 export function setTicketStatus(id: string, status: string): void {
   getDb().prepare('UPDATE tickets SET status = ? WHERE id = ?').run(status, id);
   logEvent('ticket_status', 'ticket', id, { to: status });
+}
+
+const RESOLUTION_EMAIL: Record<TicketResolution, string> = {
+  refund: 'Sorry about the trouble. We have issued a full refund to your original payment method (simulated); it should land in 3-5 business days.',
+  exchange: 'No problem. We have started an exchange: a prepaid return label is on its way, and we will ship the right size as soon as the return is scanned.',
+};
+
+/**
+ * Resolve a ticket with a refund or an exchange (both simulated): records
+ * the resolution, marks the ticket resolved, and queues the customer email.
+ */
+export function resolveTicket(id: string, resolution: string): { ok: boolean; message: string } {
+  if (resolution !== 'refund' && resolution !== 'exchange') {
+    return { ok: false, message: `Unknown resolution "${resolution}".` };
+  }
+  const db = getDb();
+  const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as Row | undefined;
+  if (!ticket) return { ok: false, message: `No ticket ${id}.` };
+  db.prepare("UPDATE tickets SET status = 'resolved', resolution = ? WHERE id = ?").run(resolution, id);
+  logEvent('ticket_resolved', 'ticket', id, { resolution, orderNumber: ticket.order_number ?? null });
+  const email = ticket.customer_email;
+  if (email !== null && email !== undefined && String(email).includes('@')) {
+    queueEmail({
+      toEmail: String(email),
+      subject: `Re: ${str(ticket.subject)}`,
+      body: RESOLUTION_EMAIL[resolution],
+      kind: `support_${resolution}`,
+      relatedOrder: ticket.order_number === null || ticket.order_number === undefined ? null : str(ticket.order_number),
+    });
+  }
+  return { ok: true, message: `${id} resolved with ${resolution === 'refund' ? 'a refund' : 'an exchange'}.` };
 }
 
 /**

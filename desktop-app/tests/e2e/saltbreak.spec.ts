@@ -93,7 +93,11 @@ test('target-down launch shows the offline page and panel Home', async () => {
     await expect(panel.locator('[data-semid="home-setup-commands"]')).toContainText(
       'pnpm dev:saltbreak'
     )
-    await expect(panel.locator('[data-semid="home-empty-hint"]')).toBeVisible()
+    // Starters seed by site profile, not reachability, so they are listed
+    // even while the target is down (the empty-state hint stays hidden).
+    await expect(panel.locator('[data-semid="home-skills"]')).toContainText(
+      'Reconcile payout PO-1043 in Books'
+    )
 
     // Teach and Settings stay reachable while the target is down.
     await panel.getByTestId('panel-teach').click()
@@ -143,11 +147,15 @@ test('teach, publish, and assisted reuse on new tickets', async () => {
     await panel.getByTestId('review-save-publish').click()
     await expect(panel.getByTestId('run-skill')).toBeVisible()
 
-    // 9. Home lists the published skill with a Run button.
+    // 9. Home lists the published skill with a Run button (alongside the
+    // pre-seeded starters, so scope the button to the taught skill's row).
     await panel.getByTestId('panel-back').click()
     const card = panel.locator('[data-semid="home-skills"]')
     await expect(card).toContainText('Resolve a support ticket')
-    await card.getByRole('button', { name: 'Run' }).click()
+    await card
+      .locator('li', { hasText: 'Resolve a support ticket' })
+      .getByRole('button', { name: 'Run' })
+      .click()
     await expect(panel.getByTestId('run-skill')).toBeVisible()
 
     // 10-11. Reuse the skill on a different ticket with an assisted run. The
@@ -239,7 +247,7 @@ test('teach-view page idea prefills the goal and example', async () => {
   }
 })
 
-test('starter task opens review with the curated script', async () => {
+test('starter task opens run setup for the seeded skill', async () => {
   const app = await launch()
   try {
     const target = await targetWindow(app)
@@ -249,24 +257,28 @@ test('starter task opens review with the curated script', async () => {
     const starter = panel.locator('[data-semid="starter-teach-reconcile-payout"]')
     await expect(starter).toBeVisible({ timeout: 30_000 })
     await starter.click()
-    await expect(panel.getByTestId('review-steps')).toContainText('Send the payout to Books')
-    await expect(panel.getByTestId('skill-name')).toHaveValue('Reconcile payout PO-1043 in Books')
+    // The starter is pre-published at first launch, so the card goes straight
+    // to run setup (no Review, no duplicate skill) with the example as hint.
+    await expect(panel.getByTestId('run-skill')).toBeVisible({ timeout: 30_000 })
+    await expect(panel.locator('[data-semid="run-input-payoutId"]')).toHaveAttribute(
+      'placeholder',
+      'e.g. PO-1043'
+    )
   } finally {
     await app.close()
   }
 })
 
 /**
- * Demo scenarios A-D: each starter task publishes its curated script, then
- * runs it end to end with the fixture provider. Review steps pause for
- * approval; the test approves (and performs the one manual refund in A).
- * These run after the tests above against the same seeded database: T-101
- * may already be resolved, which the answer-ticket script tolerates.
+ * Demo scenarios A-B: each starter task opens run setup for its pre-seeded
+ * skill, then runs it end to end with the fixture provider. Review steps
+ * pause for approval; the test approves (and performs the one manual refund
+ * in A). These run after the tests above against the same seeded database:
+ * T-101 may already be resolved, which the answer-ticket script tolerates.
  */
-async function publishStarter(
+async function openStarter(
   app: ElectronApplication,
   starterId: string,
-  reviewText: string,
   startPath: string
 ): Promise<{ target: Page; panel: Page }> {
   const target = await targetWindow(app)
@@ -277,8 +289,6 @@ async function publishStarter(
   const starter = panel.locator(`[data-semid="starter-teach-${starterId}"]`)
   await expect(starter).toBeVisible({ timeout: 30_000 })
   await starter.click()
-  await expect(panel.getByTestId('review-steps')).toContainText(reviewText)
-  await panel.getByTestId('review-save-publish').click()
   await expect(panel.getByTestId('run-skill')).toBeVisible({ timeout: 30_000 })
   return { target, panel }
 }
@@ -296,12 +306,7 @@ test('scenario A: reconcile payout PO-1043 through Ghost', async () => {
   test.setTimeout(300_000)
   const app = await launch()
   try {
-    const { target, panel } = await publishStarter(
-      app,
-      'reconcile-payout',
-      'Send the payout to Books',
-      '/staff/payments'
-    )
+    const { target, panel } = await openStarter(app, 'reconcile-payout', '/staff/payments')
 
     // The script has review items, so guided mode is recommended; override to
     // assisted — the review gates still pause for approval.
@@ -354,12 +359,7 @@ test('scenario B: answer ticket T-101 from product facts', async () => {
   test.setTimeout(300_000)
   const app = await launch()
   try {
-    const { target, panel } = await publishStarter(
-      app,
-      'answer-ticket',
-      'Write the reply',
-      '/staff/inbox'
-    )
+    const { target, panel } = await openStarter(app, 'answer-ticket', '/staff/inbox')
 
     await panel.getByTestId('mode-assisted').click()
     await panel.locator('[data-semid="run-input-ticketId"]').fill('T-101')
@@ -377,66 +377,72 @@ test('scenario B: answer ticket T-101 from product facts', async () => {
   }
 })
 
-test('scenario C: shop a beginner board under budget', async () => {
-  test.setTimeout(300_000)
+test('the Vacation: teach the rules once, then Ghost works the after-hours pile', async () => {
+  test.setTimeout(420_000)
   const app = await launch()
   try {
-    const { target, panel } = await publishStarter(
-      app,
-      'shop-under-budget',
-      'Add it to the cart',
-      '/shop'
+    const target = await targetWindow(app)
+    const panel = await windowByTitle(app, 'Ghost Operator')
+
+    // Thursday: Maya says her rules, then refunds one damaged board herself.
+    await panel.getByTestId('panel-teach').click()
+    await panel.getByTestId('teach-goal').fill('Handle after-hours support tickets')
+    await panel.getByTestId('teach-start').click()
+    await expect(panel.getByTestId('recording-pill')).toBeVisible()
+
+    await target.goto(`${TARGET_URL}/staff/inbox`)
+    await expect(target.locator('[data-semid="ticket-body-T-201"]')).toContainText('damaged in shipping')
+
+    await panel.getByTestId('recording-note').click()
+    await panel
+      .getByTestId('note-text')
+      .fill('Damaged in shipping means refund. Wrong size means exchange. Anything else, ask me.')
+    await panel.getByTestId('note-save').click()
+
+    await target.locator('[data-semid="ticket-refund-T-201"]').click()
+    await expect(target.locator('[data-semid="ticket-status-T-201"]')).toContainText('resolved')
+
+    // The draft turns the spoken rules into a decide step.
+    await panel.getByTestId('recording-finish').click()
+    const rules = panel.locator('[data-semid="rules-card"]')
+    await expect(rules).toBeVisible({ timeout: 30_000 })
+    await expect(rules).toContainText('Damaged in shipping means refund.')
+    await expect(rules).toContainText('Wrong size means exchange.')
+    await panel.getByTestId('review-save-publish').click()
+    await expect(panel.getByTestId('run-skill')).toBeVisible({ timeout: 30_000 })
+
+    // Friday: run it on the rest of the pile and leave.
+    await panel.locator('[data-semid="scope-many"]').check()
+    await panel
+      .locator('[data-semid="run-case-list"]')
+      .fill('T-202, T-203, T-204, T-205, T-206, T-207, T-208')
+    await expect(panel.locator('[data-semid="run-case-count"]')).toContainText('7 cases')
+    await panel.getByTestId('run-start').click()
+
+    // The beach: one honest summary. The chargeback comes back to Maya.
+    await expect(panel.locator('[data-semid="batch-headline"]')).toHaveText(
+      'Ghost resolved 6 tickets. 1 needs you.',
+      { timeout: 360_000 }
     )
-
-    await panel.getByTestId('mode-assisted').click()
-    await panel.locator('[data-semid="run-input-maxDollars"]').fill('500')
-    await panel.getByTestId('run-start').click()
-
-    await approveGate(panel, 'Confirm SB-BOARD-001')
-    await approveGate(panel, 'Checkout needs a person')
-    await expect(panel.locator('[data-semid="run-succeeded"]')).toBeVisible({
-      timeout: 120_000
-    })
-
-    // The run ends on the cart: board added, promo applied.
-    await expect(target.locator('[data-semid="cart-promo-status"]')).toContainText('applied')
-    await expect(target.getByText(/Drift 8/)).toBeVisible()
-  } finally {
-    await app.close()
-  }
-})
-
-test('scenario D: report a duplicate charge, then run again', async () => {
-  test.setTimeout(300_000)
-  const app = await launch()
-  try {
-    const { target, panel } = await publishStarter(
-      app,
-      'report-order-charge',
-      'Submit the help request',
-      '/order/SB-8014'
+    await expect(panel.locator('[data-semid="batch-item-T-207"]')).toHaveAttribute(
+      'data-status',
+      'escalated'
     )
+    await expect(panel.locator('[data-semid="batch-item-T-207"]')).toContainText('chargeback')
+    await expect(panel.locator('[data-semid="batch-item-T-202"]')).toContainText(
+      'Wrong size means exchange.'
+    )
+    // No NTFY_TOPIC in tests: the panel says so instead of pretending.
+    await expect(panel.locator('[data-semid="batch-notify"]')).toContainText('NTFY_TOPIC')
 
-    // No review items: assisted mode is preselected.
-    await expect(panel.getByTestId('mode-assisted')).toBeChecked()
-    await panel.locator('[data-semid="run-input-orderId"]').fill('SB-8014')
-    await panel.locator('[data-semid="run-input-reason"]').fill('Charged twice')
-    await panel.getByTestId('run-start').click()
-    await expect(panel.locator('[data-semid="run-succeeded"]')).toBeVisible({
-      timeout: 120_000
-    })
-    await expect(target.locator('[data-semid="order-help-confirm"]')).toContainText('created')
-
-    // Run again with second inputs: a different order and reason.
-    await panel.getByTestId('run-again').click()
-    await expect(panel.locator('[data-semid="run-input-orderId"]')).toHaveValue('')
-    await panel.locator('[data-semid="run-input-orderId"]').fill('SB-8026')
-    await panel.locator('[data-semid="run-input-reason"]').fill('Never arrived')
-    await panel.getByTestId('run-start').click()
-    await expect(panel.locator('[data-semid="run-succeeded"]')).toBeVisible({
-      timeout: 120_000
-    })
-    await expect(target.locator('[data-semid="order-help-confirm"]')).toContainText('created')
+    await target.goto(`${TARGET_URL}/staff/inbox`)
+    for (const id of ['T-203', 'T-205', 'T-208']) {
+      await expect(target.locator(`[data-semid="ticket-resolution-${id}"]`)).toContainText(/refund/i)
+    }
+    for (const id of ['T-202', 'T-204', 'T-206']) {
+      await expect(target.locator(`[data-semid="ticket-resolution-${id}"]`)).toContainText(/exchange/i)
+    }
+    await expect(target.locator('[data-semid="ticket-status-T-207"]')).toContainText('open')
   } finally {
     await app.close()
   }

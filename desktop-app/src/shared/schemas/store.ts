@@ -1,11 +1,11 @@
 import { z } from 'zod'
 import { Recording } from './recording'
-import { RunRecord } from './run'
+import { BatchRecord, RunRecord } from './run'
 import { SiteMap } from './scout'
 import { Skill } from './skills'
 import { Suggestion } from './suggest'
 
-export const STATE_SCHEMA_VERSION = 5 as const
+export const STATE_SCHEMA_VERSION = 6 as const
 
 /**
  * Legacy persisted states (v1-v4, Harbor Goods era). Only recordings carry
@@ -48,25 +48,39 @@ export const PersistedState = z.object({
   /** Recording-mined suggestions. Optional so v5 states without them keep parsing. */
   suggestions: z.array(Suggestion).optional(),
   /** Per-site page graphs from scout scans, one entry per site id. Optional; no version bump. */
-  siteMaps: z.array(SiteMap).optional()
+  siteMaps: z.array(SiteMap).optional(),
+  /** Curated starter skills were seeded (exactly once per state file). Optional; no version bump. */
+  seededStarters: z.boolean().optional(),
+  /** "Run on many" batches (v6). */
+  batches: z.array(BatchRecord).default([])
 })
 export type PersistedState = z.infer<typeof PersistedState>
 
+/** v5: the same shape before batches existed. */
+const V5State = PersistedState.omit({ schemaVersion: true, batches: true }).extend({
+  schemaVersion: z.literal(5)
+})
+
 export function defaultState(): PersistedState {
-  return { schemaVersion: STATE_SCHEMA_VERSION, recordings: [], skills: [], runs: [] }
+  return { schemaVersion: STATE_SCHEMA_VERSION, recordings: [], skills: [], runs: [], batches: [] }
 }
 
 /** Parse any known persisted version and migrate forward to current. */
 export function migrateState(raw: unknown): PersistedState {
   const current = PersistedState.safeParse(raw)
   if (current.success) return current.data
+  const v5 = V5State.safeParse(raw)
+  if (v5.success) {
+    return { ...v5.data, schemaVersion: STATE_SCHEMA_VERSION, batches: [] }
+  }
   const legacy = LegacyState.safeParse(raw)
   if (legacy.success) {
     return {
       schemaVersion: STATE_SCHEMA_VERSION,
       recordings: legacy.data.recordings,
       skills: [],
-      runs: []
+      runs: [],
+      batches: []
     }
   }
   // Final attempt surfaces a precise validation error for genuinely corrupt data.

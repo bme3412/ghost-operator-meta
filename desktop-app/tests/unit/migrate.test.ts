@@ -20,19 +20,32 @@ describe('state migration', () => {
         skills: [{ id: 'old' }],
         runs: [{ id: 'run-old' }]
       })
-      expect(migrated.schemaVersion).toBe(5)
+      expect(migrated.schemaVersion).toBe(6)
       expect(migrated.recordings).toEqual([RECORDING])
       expect(migrated.skills).toEqual([])
       expect(migrated.runs).toEqual([])
+      expect(migrated.batches).toEqual([])
     }
+  })
+
+  it('migrates v5 state to v6 with an empty batch list', () => {
+    const migrated = migrateState({ schemaVersion: 5, recordings: [RECORDING], skills: [], runs: [] })
+    expect(migrated).toEqual({
+      schemaVersion: 6,
+      recordings: [RECORDING],
+      skills: [],
+      runs: [],
+      batches: []
+    })
   })
 
   it('passes current state through untouched', () => {
     const current = {
-      schemaVersion: 5 as const,
+      schemaVersion: 6 as const,
       recordings: [RECORDING],
       skills: [],
-      runs: []
+      runs: [],
+      batches: []
     }
     expect(migrateState(current)).toEqual(current)
   })

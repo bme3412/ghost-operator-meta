@@ -265,6 +265,61 @@ const BACKFILL_TICKETS: BackfillTicket[] = [
   { id: 'T-113', days: 2, subject: 'Can I change my order address?', sku: null, orderNumber: 'SB-8026', status: 'pending', body: 'Moving next week, need to reroute my order.', reply: null, email: 'logan@example.com' },
 ];
 
+interface PileTicket {
+  id: string;
+  hoursAgo: number;
+  subject: string;
+  sku: string;
+  title: string;
+  priceCents: number;
+  orderNumber: string;
+  name: string;
+  email: string;
+  address: string;
+  body: string;
+}
+
+/**
+ * The after-hours support pile for the Vacation demo: shipping damage
+ * (refund), wrong size (exchange), and one bank chargeback that neither
+ * rule covers. T-201 is the teaching example.
+ */
+const AFTER_HOURS_PILE: PileTicket[] = [
+  { id: 'T-201', hoursAgo: 14, subject: 'Board arrived with a ding in the rail', sku: 'SB-BOARD-001', title: "Drift 8'0\" Foam Surfboard", priceCents: 34900, orderNumber: 'SB-2101', name: 'Riley Shaw', email: 'riley@example.com', address: '4 Tern St, Long Beach NY', body: 'Opened the box this morning and there is a deep ding in the rail. Looks like it was damaged in shipping, the box was crushed on that corner.' },
+  { id: 'T-202', hoursAgo: 13, subject: 'Rash guard is too small', sku: 'SB-APP-007', title: 'Harbor Rash Guard', priceCents: 5900, orderNumber: 'SB-2102', name: 'Noah Bell', email: 'noah@example.com', address: '61 Gull Ave, Wrightsville NC', body: 'Ordered a medium but it is way too small across the shoulders. Can I swap it for a large?' },
+  { id: 'T-203', hoursAgo: 12, subject: 'Fin box cracked on arrival', sku: 'SB-BOARD-011', title: "Grom 6'6\" Funboard", priceCents: 38900, orderNumber: 'SB-2103', name: 'Ava Torres', email: 'ava@example.com', address: '19 Kelp Rd, Ventura CA', body: 'The center fin box is cracked straight through. The packaging had a hole in it, so it must have been damaged in transit.' },
+  { id: 'T-204', hoursAgo: 10, subject: 'Leash is too short for my board', sku: 'SB-ACC-008', title: 'Wax and Leash Kit', priceCents: 3400, orderNumber: 'SB-2104', name: 'Mateo Cruz', email: 'mateo@example.com', address: '8 Shoal Ln, Cocoa Beach FL', body: 'The 6ft leash is the wrong size for my 9ft longboard. Can I exchange it for a 9ft leash?' },
+  { id: 'T-205', hoursAgo: 9, subject: 'Delaminating right out of the box', sku: 'SB-BOARD-001', title: "Drift 8'0\" Foam Surfboard", priceCents: 34900, orderNumber: 'SB-2105', name: 'Lena Fischer', email: 'lena@example.com', address: '27 Osprey Ct, Montauk NY', body: 'The soft top is peeling and the deck is delaminating near the tail. The box looked like it had been dropped. Arrived damaged.' },
+  { id: 'T-206', hoursAgo: 7, subject: 'Funboard too big for my son', sku: 'SB-BOARD-011', title: "Grom 6'6\" Funboard", priceCents: 38900, orderNumber: 'SB-2106', name: 'Priya Nair', email: 'priya.n@example.com', address: '3 Heron Way, Santa Cruz CA', body: 'Bought this for my 9 year old and it is too big for him to carry or paddle. Could we exchange it for a smaller size?' },
+  { id: 'T-207', hoursAgo: 5, subject: 'Disputing paddle charge with my bank', sku: 'SB-PADDLE-004', title: 'Carbon SUP Paddle', priceCents: 12900, orderNumber: 'SB-2107', name: 'Chris Dalton', email: 'chris@example.com', address: '55 Marina Blvd, Galveston TX', body: 'I do not recognize this purchase. I have already filed a chargeback with my bank and they told me to contact you.' },
+  { id: 'T-208', hoursAgo: 3, subject: 'Towel arrived torn', sku: 'SB-TOWEL-003', title: 'Côte Beach Towel', priceCents: 4500, orderNumber: 'SB-2108', name: 'Sofia Moreau', email: 'sofia@example.com', address: '12 Pier Rd, Narragansett RI', body: 'The towel came torn along the fringe and the mailer was ripped open. Damaged in shipping.' },
+];
+
+function seedAfterHoursPile(db: ReturnType<typeof getDb>): number {
+  const putOrder = db.prepare('INSERT OR IGNORE INTO orders (number, customer_name, email, address, status, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const putItem = db.prepare('INSERT OR IGNORE INTO order_items (order_id, sku, title, qty, unit_price_cents) VALUES (?, ?, ?, ?, ?)');
+  const putCustomer = db.prepare('INSERT OR IGNORE INTO customers (name, email, created_at) VALUES (?, ?, ?)');
+  const putTicket = db.prepare('INSERT OR IGNORE INTO tickets (id, subject, sku, order_number, customer_email, status, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const putEvent = db.prepare('INSERT INTO events (type, entity, entity_id, data, created_at) VALUES (?, ?, ?, ?, ?)');
+  let tickets = 0;
+  for (const t of AFTER_HOURS_PILE) {
+    const ticketAt = new Date(Date.now() - t.hoursAgo * 3600000).toISOString();
+    const orderedAt = daysAgo(4);
+    if (Number(putOrder.run(t.orderNumber, t.name, t.email, t.address, 'fulfilled', orderedAt).changes) > 0) {
+      const row = db.prepare('SELECT id FROM orders WHERE number = ?').get(t.orderNumber) as { id: number };
+      putItem.run(row.id, t.sku, t.title, 1, t.priceCents);
+      putEvent.run('order_placed', 'order', String(row.id), JSON.stringify({ number: t.orderNumber }), orderedAt);
+    }
+    putCustomer.run(t.name, t.email, orderedAt);
+    const r = putTicket.run(t.id, t.subject, t.sku, t.orderNumber, t.email, 'open', t.body, ticketAt);
+    if (Number(r.changes) > 0) {
+      tickets += 1;
+      putEvent.run('ticket_opened', 'ticket', t.id, JSON.stringify({ subject: t.subject, orderNumber: t.orderNumber }), ticketAt);
+    }
+  }
+  return tickets;
+}
+
 /**
  * Pin scenario orders to known lines (the backfill RNG leaves these random)
  * and settle three October TidePay payouts. Pins re-apply deterministically;
@@ -543,6 +598,7 @@ export function seed(): Record<string, number> {
     db.prepare('INSERT INTO ticket_replies (ticket_id, body, created_at) VALUES (?, ?, ?)')
       .run('T-102', 'Warehouse confirms the board ships today; tracking follows by email.', now);
   }
+  counts.tickets += seedAfterHoursPile(db);
 
   return counts;
 }

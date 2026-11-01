@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/schemas'
 import { Button } from '../components/Button'
 import { friendlyError } from '../lib/errors'
+import { runModeLabel, runStatusLabel, stepLabel } from '../lib/humanize'
 import { SiteMapSection } from './SiteMapSection'
 
 const X_MAIN = 40
@@ -22,8 +23,13 @@ function bindingLabel(bindings: Record<string, string>): string {
   return entries.map(([name, path]) => `${name} ← ${path}`).join(', ')
 }
 
-export function MapSection(): React.JSX.Element {
+export function MapSection({
+  onShowSkills
+}: {
+  onShowSkills?: () => void
+}): React.JSX.Element {
   const [summaries, setSummaries] = useState<SkillSummary[]>([])
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
   const [skillId, setSkillId] = useState('')
   const [skill, setSkill] = useState<Skill | null>(null)
   const [version, setVersion] = useState<number | null>(null)
@@ -31,7 +37,9 @@ export function MapSection(): React.JSX.Element {
   const [runs, setRuns] = useState<RunRecord[]>([])
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [mode, setMode] = useState<'skill' | 'site'>('skill')
+  // Null until the user picks a mode: Site when there are no skills to map,
+  // Skill otherwise.
+  const [mode, setMode] = useState<'skill' | 'site' | null>(null)
   const [polishWarning, setPolishWarning] = useState<string | null>(null)
   const [polishing, setPolishing] = useState(false)
   const [aiAvailable, setAiAvailable] = useState(false)
@@ -88,17 +96,22 @@ export function MapSection(): React.JSX.Element {
   }
 
   useEffect(() => {
-    window.ghost.skills
-      .list()
-      .then((rows) => {
-        setSummaries(rows)
-        setSkillId((current) => current || rows[0]?.id || '')
-      })
-      .catch((err: unknown) => setError(friendlyError(err)))
-    window.ghost.runs
-      .list()
-      .then(setRuns)
-      .catch((err: unknown) => setError(friendlyError(err)))
+    const load = (): void => {
+      window.ghost.skills
+        .list()
+        .then((rows) => {
+          setSummaries(rows)
+          setSkillId((current) => current || rows[0]?.id || '')
+        })
+        .catch((err: unknown) => setError(friendlyError(err)))
+        .finally(() => setSkillsLoaded(true))
+      window.ghost.runs
+        .list()
+        .then(setRuns)
+        .catch((err: unknown) => setError(friendlyError(err)))
+    }
+    load()
+    return window.ghost.library.onChanged(load)
   }, [])
 
   useEffect(() => {
@@ -147,7 +160,7 @@ export function MapSection(): React.JSX.Element {
       nodes.push({
         id,
         position: { x: X_MAIN, y: ROW * 2 + index * ROW },
-        data: { label: `${step.id}\n[${step.kind}]${step.checks.length > 0 ? `\nchecks: ${step.checks.map((c) => c.name).join(', ')}` : ''}` }
+        data: { label: `${stepLabel(step)}${step.checks.length > 0 ? `\nchecks: ${step.checks.map((c) => c.name).join(', ')}` : ''}` }
       })
       const from = index === 0 ? 'inputs' : `step-${recipe.steps[index - 1]?.id}`
       edges.push({ id: `e-${from}-${id}`, source: from, target: id, label: bindingLabel(step.bindings) })
@@ -183,12 +196,14 @@ export function MapSection(): React.JSX.Element {
       nodes.push({
         id,
         position: { x: X_SIDE, y: ROW * 2 + index * ROW },
-        data: { label: `${run.id}\n${run.mode} · ${run.status}` }
+        data: { label: `${runModeLabel(run.mode)} · ${runStatusLabel(run.status)}` }
       })
       edges.push({ id: `e-skill-${id}`, source: 'skill', target: id, label: `v${run.skillVersion}` })
     })
     return { nodes, edges }
   }, [skill, record, recordings, runs])
+
+  const effectiveMode = mode ?? (skillsLoaded && summaries.length === 0 ? 'site' : 'skill')
 
   return (
     <div>
@@ -197,69 +212,9 @@ export function MapSection(): React.JSX.Element {
           {error}
         </p>
       )}
-      <section aria-label="Suggestions" className="card">
-        <h3>Suggestions</h3>
-        <div className="teach-actions">
-          <Button
-            data-testid="suggestions-polish"
-            data-semid="suggestions-polish"
-            disabled={!aiAvailable || polishing}
-            title={
-              aiAvailable ? 'Merge and rank suggestions with AI' : 'Set MODEL_API_KEY to enable AI polish'
-            }
-            onClick={polishSuggestions}
-          >
-            {polishing ? 'Polishing…' : 'Polish with AI'}
-          </Button>
-        </div>
-        {!aiAvailable && (
-          <p className="muted" data-semid="suggestions-polish-hint">
-            Set MODEL_API_KEY to enable AI polish.
-          </p>
-        )}
-        {polishWarning !== null && (
-          <p className="alert-warn" role="status" data-semid="suggestions-polish-warning">
-            {polishWarning}
-          </p>
-        )}
-        {suggestions.length === 0 && (
-          <p className="muted">No suggestions yet. Finish a recording to mine new ones.</p>
-        )}
-        {suggestions.length > 0 && (
-          <ul data-testid="suggestions-list" data-semid="suggestions-list">
-            {suggestions.map((suggestion) => (
-              <li
-                key={suggestion.id}
-                data-testid={`suggestion-${suggestion.id}`}
-                data-semid={`suggestion-${suggestion.id}`}
-              >
-                <strong>{suggestion.title}</strong>
-                <p className="muted">{suggestion.why}</p>
-                <div className="teach-actions">
-                  <Button
-                    variant="primary"
-                    data-testid={`suggestion-teach-${suggestion.id}`}
-                    data-semid={`suggestion-teach-${suggestion.id}`}
-                    onClick={() => teachSuggestion(suggestion.id)}
-                  >
-                    Teach this
-                  </Button>
-                  <Button
-                    data-testid={`suggestion-dismiss-${suggestion.id}`}
-                    data-semid={`suggestion-dismiss-${suggestion.id}`}
-                    onClick={() => dismissSuggestion(suggestion.id)}
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
       <div className="field" role="group" aria-label="Map mode">
         <Button
-          variant={mode === 'skill' ? 'primary' : 'default'}
+          variant={effectiveMode === 'skill' ? 'primary' : 'default'}
           data-testid="map-mode-skill"
           data-semid="map-mode-skill"
           onClick={() => setMode('skill')}
@@ -267,7 +222,7 @@ export function MapSection(): React.JSX.Element {
           Skill
         </Button>
         <Button
-          variant={mode === 'site' ? 'primary' : 'default'}
+          variant={effectiveMode === 'site' ? 'primary' : 'default'}
           data-testid="map-mode-site"
           data-semid="map-mode-site"
           onClick={() => setMode('site')}
@@ -275,11 +230,18 @@ export function MapSection(): React.JSX.Element {
           Site
         </Button>
       </div>
-      {mode === 'site' && <SiteMapSection />}
-      {mode === 'skill' && summaries.length === 0 && (
-        <p className="muted">No skills yet. Compile a recording first.</p>
+      {effectiveMode === 'site' && <SiteMapSection />}
+      {effectiveMode === 'skill' && skillsLoaded && summaries.length === 0 && (
+        <div>
+          <p className="muted">No skills yet. Compile a recording first.</p>
+          {onShowSkills && (
+            <Button data-semid="map-go-skills" onClick={onShowSkills}>
+              Go to skills
+            </Button>
+          )}
+        </div>
       )}
-      {mode === 'skill' && summaries.length > 0 && (
+      {effectiveMode === 'skill' && summaries.length > 0 && (
         <>
           <div className="field">
             <label htmlFor="map-skill">Skill</label>
@@ -322,6 +284,68 @@ export function MapSection(): React.JSX.Element {
           </div>
         </>
       )}
+      <section aria-label="Suggestions" className="card">
+        <h3>Suggestions</h3>
+        {suggestions.length > 0 && (
+          <div className="teach-actions">
+            <Button
+              data-testid="suggestions-polish"
+              data-semid="suggestions-polish"
+              disabled={!aiAvailable || polishing}
+              title={
+                aiAvailable ? 'Merge and rank suggestions with AI' : 'Set MODEL_API_KEY to enable AI polish'
+              }
+              onClick={polishSuggestions}
+            >
+              {polishing ? 'Polishing…' : 'Polish with AI'}
+            </Button>
+          </div>
+        )}
+        {suggestions.length > 0 && !aiAvailable && (
+          <p className="muted" data-semid="suggestions-polish-hint">
+            Set MODEL_API_KEY to enable AI polish.
+          </p>
+        )}
+        {polishWarning !== null && (
+          <p className="alert-warn" role="status" data-semid="suggestions-polish-warning">
+            {polishWarning}
+          </p>
+        )}
+        {suggestions.length === 0 && (
+          <p className="muted">No suggestions yet. Scan the site or finish a recording.</p>
+        )}
+        {suggestions.length > 0 && (
+          <ul data-testid="suggestions-list" data-semid="suggestions-list">
+            {suggestions.map((suggestion) => (
+              <li
+                key={suggestion.id}
+                data-testid={`suggestion-${suggestion.id}`}
+                data-semid={`suggestion-${suggestion.id}`}
+              >
+                <strong>{suggestion.title}</strong>
+                <p className="muted">{suggestion.why}</p>
+                <div className="teach-actions">
+                  <Button
+                    variant="primary"
+                    data-testid={`suggestion-teach-${suggestion.id}`}
+                    data-semid={`suggestion-teach-${suggestion.id}`}
+                    onClick={() => teachSuggestion(suggestion.id)}
+                  >
+                    Teach this
+                  </Button>
+                  <Button
+                    data-testid={`suggestion-dismiss-${suggestion.id}`}
+                    data-semid={`suggestion-dismiss-${suggestion.id}`}
+                    onClick={() => dismissSuggestion(suggestion.id)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

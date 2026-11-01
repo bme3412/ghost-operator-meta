@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  BatchRecord,
   CompileResult,
   PageIdeasResult,
   PanelNavigateParams,
@@ -16,6 +17,7 @@ import type {
   ScoutStatus,
   Skill,
   SkillSummary,
+  StartBatchRequest,
   StartRunRequest,
   Suggestion,
   SuggestAcceptPrefill,
@@ -76,6 +78,12 @@ const api = {
       ipcRenderer.invoke('recorder:events', events),
     addNote: (text: string): Promise<RecorderStatePush> =>
       ipcRenderer.invoke('recorder:note', { text }),
+    requestMic: (): Promise<boolean> => ipcRenderer.invoke('recorder:mic-access'),
+    transcribe: (
+      audio: Uint8Array,
+      mimeType: string
+    ): Promise<{ text: string; source: 'live' | 'canned' }> =>
+      ipcRenderer.invoke('recorder:transcribe', { audio, mimeType }),
     finish: (): Promise<Recording> => ipcRenderer.invoke('recorder:finish'),
     cancel: (): Promise<RecorderStatePush> => ipcRenderer.invoke('recorder:cancel'),
     onState: (listener: (push: RecorderStatePush) => void): (() => void) =>
@@ -154,6 +162,18 @@ const api = {
     get: (runId: string): Promise<RunRecord | null> => ipcRenderer.invoke('runs:get', { runId }),
     onProgress: (listener: (progress: RunProgress | null) => void): (() => void) =>
       onPayload<RunProgress | null>('ghost:run-progress', listener)
+  },
+  batches: {
+    start: (request: StartBatchRequest): Promise<BatchRecord> =>
+      ipcRenderer.invoke('batches:start', request),
+    openCases: (): Promise<string[]> => ipcRenderer.invoke('batches:open-cases'),
+    list: (): Promise<BatchRecord[]> => ipcRenderer.invoke('batches:list'),
+    get: (batchId: string): Promise<BatchRecord | null> =>
+      ipcRenderer.invoke('batches:get', { batchId }),
+    cancel: (batchId: string): Promise<BatchRecord | null> =>
+      ipcRenderer.invoke('batches:cancel', { batchId }),
+    awayUrl: (batchId: string): Promise<string | null> =>
+      ipcRenderer.invoke('batches:away-url', { batchId })
   }
 }
 

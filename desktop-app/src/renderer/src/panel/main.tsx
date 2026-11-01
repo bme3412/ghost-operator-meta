@@ -4,6 +4,7 @@ import type { RecorderStatePush, RunProgress } from '../../../shared/schemas'
 import '../styles.css'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { friendlyError } from '../lib/errors'
+import { BatchView } from './views/BatchView'
 import { HomeView } from './views/HomeView'
 import { LibraryView } from './views/LibraryView'
 import { RecordingView } from './views/RecordingView'
@@ -23,6 +24,7 @@ const TITLES: Record<PanelView, string> = {
   runSetup: 'Run a skill',
   running: 'Running',
   result: 'Run result',
+  batch: 'While you were away',
   library: 'Library',
   settings: 'Settings'
 }
@@ -83,13 +85,22 @@ function PanelApp(): React.JSX.Element {
     const terminal = TERMINAL_RUN.has(progress.status)
     const wasTerminal = was !== null && TERMINAL_RUN.has(was)
     const view = navRef.current.view
+    // Batch runs chain one case after another: stay on the running view
+    // between cases, and let main navigate to the batch summary at the end.
+    const followViews = progress.batch ? ['home', 'runSetup', 'running', 'result'] : ['home', 'runSetup']
     if (
       !terminal &&
       (was === null || wasTerminal || wasId !== progress.runId) &&
-      (view === 'home' || view === 'runSetup')
+      followViews.includes(view)
     ) {
       setNav({ view: 'running', runId: progress.runId })
-    } else if (terminal && !wasTerminal && wasId === progress.runId && view === 'running') {
+    } else if (
+      terminal &&
+      !progress.batch &&
+      !wasTerminal &&
+      wasId === progress.runId &&
+      view === 'running'
+    ) {
       setNav({ view: 'result', runId: progress.runId })
     }
   }, [progress])
@@ -179,8 +190,14 @@ function PanelApp(): React.JSX.Element {
           ) : (
             <HomeView onNav={onNav} recorder={recorder} progress={progress} />
           ))}
+        {nav.view === 'batch' &&
+          (nav.batchId ? (
+            <BatchView onNav={onNav} batchId={nav.batchId} />
+          ) : (
+            <HomeView onNav={onNav} recorder={recorder} progress={progress} />
+          ))}
         {nav.view === 'library' && (
-          <LibraryView tab={nav.libraryTab ?? 'skills'} focusId={nav.focusId} />
+          <LibraryView tab={nav.libraryTab ?? 'skills'} focusId={nav.focusId} onNav={onNav} />
         )}
         {nav.view === 'settings' && <SettingsView />}
         </ErrorBoundary>

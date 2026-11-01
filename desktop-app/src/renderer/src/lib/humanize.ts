@@ -27,6 +27,42 @@ interface LabeledStep {
   goal?: string | null
 }
 
+/** Display label for a run mode: assisted → "Do it for me". */
+export function runModeLabel(mode: string): string {
+  switch (mode) {
+    case 'assisted':
+      return 'Do it for me'
+    case 'guide':
+      return 'Guide me'
+    default:
+      return humanizeKey(mode)
+  }
+}
+
+/** Display label for a run status: succeeded → "Succeeded". */
+export function runStatusLabel(status: string): string {
+  switch (status) {
+    case 'succeeded':
+      return 'Succeeded'
+    case 'running':
+      return 'Running'
+    case 'queued':
+      return 'Queued'
+    case 'verifying':
+      return 'Verifying'
+    case 'paused':
+      return 'Paused'
+    case 'failed':
+      return 'Failed'
+    case 'cancelled':
+      return 'Cancelled'
+    case 'escalated':
+      return 'Needs you'
+    default:
+      return humanizeKey(status)
+  }
+}
+
 /**
  * Display label for a recipe or run step: the plain-language goal, with a
  * kind-based fallback so raw step ids never reach the main flow.
@@ -36,6 +72,7 @@ export function stepLabel(step: LabeledStep): string {
   if (goal) return goal
   if (step.kind === 'verify') return 'Verify the result'
   if (step.kind === 'review') return 'Review this step'
+  if (step.kind === 'decide') return 'Decide using your rules'
   return humanizeKey(step.id)
 }
 

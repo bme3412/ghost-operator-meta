@@ -1,6 +1,7 @@
 import type { Proposal, Recording, RecordingEvent, SkillStep } from '../../shared/schemas'
 import { orderedAttemptSelectors } from '../../shared/capture/selectors'
 import { TARGET } from '../../shared/target'
+import { isEscalationRule, rulesFromNotes } from './decide'
 
 /**
  * Curated tap-to-run demo scripts for the Saltbreak starter tasks. Each is a
@@ -166,62 +167,53 @@ function answerTicket(): Proposal {
   }
 }
 
-function shopUnderBudget(): Proposal {
-  return {
-    recipe: scriptedRecipe('shop-under-budget', 'Find an in-stock beginner board under ${{inputs.maxDollars}} and add it to the cart.', [
-      gotoStep(
-        'open-shop-filtered',
-        'Open the shop filtered to Surfboards under budget, cheapest first.',
-        '/shop?category=Surfboards&max={{inputs.maxDollars}}&sort=price-asc'
-      ),
-      reviewStep(
-        'pick-board',
-        'Confirm SB-BOARD-001 (Drift 8\u20190") is in stock and the best fit; stop if nothing in stock fits the budget.'
-      ),
-      clickStep('open-board', 'Open the best match.', '[data-semid="product-card-SB-BOARD-001"]'),
-      clickStep('add-to-cart', 'Add it to the cart.', '[data-semid="add-to-cart"]'),
-      gotoStep('open-cart', 'Open the cart.', '/cart'),
-      fillStep('enter-promo', 'Enter the active promo code.', '[data-semid="cart-promo-code"]', 'HARBOR10'),
-      clickStep('apply-promo', 'Apply the promo code.', '[data-semid="cart-promo-apply"]'),
-      verifyTextStep('verify-promo', 'Verify the promo applied.', '[data-semid="cart-promo-status"]', 'applied'),
-      reviewStep('pay-yourself', 'Checkout needs a person: pay for the order yourself, then approve.')
-    ]),
-    unresolved: ['Run this on a fresh reset: it assumes the seeded catalog, stock, and HARBOR10 promo.'],
-    demonstrated: { 'Budget "500"': 'inputs.maxDollars' },
-    notes: []
-  }
-}
+/** The rules Maya says out loud in the Vacation demo. */
+export const AFTER_HOURS_RULES = [
+  'Damaged in shipping means refund.',
+  'Wrong size means exchange.',
+  'Anything else, ask me.'
+]
 
-function reportOrderCharge(): Proposal {
+function handleAfterHoursTickets(): Proposal {
   return {
-    recipe: scriptedRecipe('report-order-charge', 'Report a billing problem on order {{inputs.orderId}}.', [
-      gotoStep('open-order', 'Open the order.', '/order/{{inputs.orderId}}'),
-      fillStep('pick-reason', 'Pick the help reason.', '[data-semid="order-help-reason"]', '{{inputs.reason}}'),
-      fillStep(
-        'write-message',
-        'Describe the problem.',
-        '[data-semid="order-help-message"]',
-        'Order {{inputs.orderId}}: {{inputs.reason}}. Please advise.'
+    recipe: scriptedRecipe('handle-after-hours-tickets', 'Handle support ticket {{inputs.ticketId}} using your rules.', [
+      gotoStep('open-inbox', 'Open the support inbox.', '/staff/inbox'),
+      {
+        id: 'decide-using-your-rules',
+        kind: 'decide',
+        applicationId: TARGET.id,
+        goal: 'Read the ticket and decide: refund or exchange, or hand it back to you.',
+        why: 'You said how to handle these tickets; anything your rules do not cover comes back to you.',
+        expected: 'One of your rules picks refund or exchange, or the ticket is escalated.',
+        bindings: { readSelector: '[data-semid="ticket-body-{{inputs.ticketId}}"]' },
+        dataRefs: [],
+        checks: [],
+        rules: AFTER_HOURS_RULES,
+        options: ['refund', 'exchange'],
+        writes: DECISION_INPUT
+      },
+      clickStep(
+        'apply-resolution',
+        'Carry out the decision (refund or exchange).',
+        '[data-semid="ticket-{{inputs.resolution}}-{{inputs.ticketId}}"]'
       ),
-      submitStep('submit-request', 'Submit the help request.', '[data-semid="order-help-form"]'),
       verifyTextStep(
-        'verify-ticket-created',
-        'Verify the confirmation that a ticket was created.',
-        '[data-semid="order-help-confirm"]',
-        'created'
+        'verify-ticket-resolved',
+        'Verify the ticket shows as resolved.',
+        '[data-semid="ticket-status-{{inputs.ticketId}}"]',
+        'resolved'
       )
     ]),
     unresolved: [],
-    demonstrated: { 'Order "SB-8014"': 'inputs.orderId', 'Reason "Charged twice"': 'inputs.reason' },
-    notes: []
+    demonstrated: { 'Ticket "T-201"': 'inputs.ticketId' },
+    notes: [...AFTER_HOURS_RULES]
   }
 }
 
 const SCRIPTED: Record<string, () => Proposal> = {
+  'handle-after-hours-tickets': handleAfterHoursTickets,
   'reconcile-payout': reconcilePayout,
-  'answer-ticket': answerTicket,
-  'shop-under-budget': shopUnderBudget,
-  'report-order-charge': reportOrderCharge
+  'answer-ticket': answerTicket
 }
 
 /** Scripted ids with canned fixture proposals, for the Saltbreak starter tasks. */
@@ -278,6 +270,111 @@ function elementLabel(semid: string): string {
   const words = semid.split('-').filter((word) => word.length > 1 && !/^\d+$/.test(word))
   const label = (words.length > 0 ? words : [semid]).join(' ')
   return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+/** Run input a decide step writes its choice to. */
+export const DECISION_INPUT = 'resolution'
+
+const FILLER_WORDS = new Set([
+  'i', 'im', 'you', 'we', 'it', 'its', 'the', 'that', 'this', 'not', 'no', 'yes', 'done',
+  'something', 'nothing', 'they', 'he', 'she', 'a', 'an'
+])
+
+/**
+ * Turn spoken rules into a judgment call. When the notes state rules like
+ * "Damaged in shipping means refund" and the demonstration clicked a control
+ * named for one of those choices (ticket-refund-T-201), the click becomes
+ * "click whichever choice Ghost decided", preceded by a decide step that
+ * reads the case and applies the rules. Mutates `steps` in place.
+ */
+function insertDecision(
+  steps: StepEvidence[],
+  recording: Recording,
+  identity: string,
+  inputName: string,
+  scope: string
+): { unresolved: string[] } | null {
+  const { rules, choices } = rulesFromNotes(recording.notes.map((n) => n.text))
+  if (choices.length === 0) return null
+  const index = steps.findIndex(({ step }) => {
+    const selector = step.bindings['selector']
+    return (
+      step.bindings['action'] === 'click' &&
+      selector !== undefined &&
+      choices.some((choice) => selector.includes(`-${choice}-`))
+    )
+  })
+  if (index === -1) return null
+  const clickEvidence = steps[index] as StepEvidence
+  const click = clickEvidence.step
+  const selector = click.bindings['selector'] as string
+  const shown = choices.find((choice) => selector.includes(`-${choice}-`)) as string
+  // Narration that happens to fit "X means Y" ("this means I'm done") must
+  // not become an option.
+  const options = choices.filter((choice) => choice === shown || !FILLER_WORDS.has(choice))
+  const placeholder = `{{inputs.${inputName}}}`
+  const readHook =
+    recording.endPage?.hooks.find((hook) => /body/.test(hook) && hook.includes(identity)) ?? null
+  const readSelector = readHook
+    ? readHook.split(identity).join(placeholder)
+    : inputName === 'ticketId'
+      ? `[data-semid="ticket-body-${placeholder}"]`
+      : `[data-ticket-id="${placeholder}"]`
+
+  const decide: SkillStep = {
+    id: 'decide-using-your-rules',
+    kind: 'decide',
+    applicationId: scope,
+    goal: `Read the case and decide: ${options.join(' or ')}, or hand it back to you.`,
+    why: 'You said how to handle these cases; anything your rules do not cover comes back to you.',
+    expected: `One of your rules picks ${options.join(' or ')}, or the case is escalated.`,
+    bindings: { readSelector },
+    dataRefs: [],
+    checks: [],
+    rules,
+    options,
+    writes: DECISION_INPUT
+  }
+  const decidedSelector = selector.split(`-${shown}-`).join(`-{{inputs.${DECISION_INPUT}}}-`)
+  const { selectorCandidates: _dropped, ...rest } = click
+  clickEvidence.step = {
+    ...rest,
+    goal: `Carry out the decision (${options.join(' or ')}).`,
+    why: 'Ghost clicks whichever choice your rules picked for this case.',
+    bindings: { ...click.bindings, selector: decidedSelector }
+  }
+  steps.splice(index, 0, { step: decide, afterSeq: clickEvidence.afterSeq })
+
+  const statusIndex = steps.findIndex(({ step }) => step.id === 'verify-ticket-resolved')
+  if (statusIndex === -1 && inputName === 'ticketId') {
+    steps.splice(index + 2, 0, {
+      step: {
+        id: 'verify-ticket-resolved',
+        kind: 'verify',
+        goal: 'Verify the ticket shows as resolved.',
+        why: 'A click is not proof; the persisted ticket state must show it.',
+        expected: 'The ticket status reads resolved.',
+        bindings: {},
+        dataRefs: [],
+        checks: [
+          {
+            name: 'text_contains',
+            selector: `[data-semid="ticket-status-${placeholder}"]`,
+            expected: 'resolved'
+          }
+        ]
+      },
+      afterSeq: clickEvidence.afterSeq
+    })
+  }
+  return {
+    unresolved:
+      rules.some(isEscalationRule) || rules.length === 0
+        ? []
+        : [
+            'Your rules never say what to do with other cases. Ghost will hand back anything they do not cover.'
+          ]
+  }
 }
 
 /**
@@ -500,6 +597,9 @@ export function compileFixture(recording: Recording): Proposal {
   if (steps.length === 0) {
     unresolved.push('No replayable actions were demonstrated.')
   }
+
+  const decided = identity ? insertDecision(steps, recording, identity, inputName, scope) : null
+  if (decided) unresolved.push(...decided.unresolved)
 
   for (const note of recording.notes) {
     let target: StepEvidence | null = null

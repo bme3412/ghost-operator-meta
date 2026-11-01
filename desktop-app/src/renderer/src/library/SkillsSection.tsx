@@ -9,15 +9,16 @@ import {
 import { stepOutcomes } from '../../../shared/skills/branches'
 import { countReviewItems } from '../../../shared/skills/review'
 import { Button } from '../components/Button'
+import { RulesCard } from '../components/Decisions'
 import { friendlyError } from '../lib/errors'
 import { checkLabel, humanizeKey, stepLabel } from '../lib/humanize'
 
 export function SkillsSection({
   focusId,
-  onNavigate
+  onTeach
 }: {
   focusId: string | null
-  onNavigate?: (section: 'recordings' | 'skills' | 'runs' | 'map') => void
+  onTeach?: () => void
 }): React.JSX.Element {
   const [summaries, setSummaries] = useState<SkillSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(focusId)
@@ -73,18 +74,30 @@ export function SkillsSection({
     []
   )
 
+  // Library changes refresh the list AND the open detail (it can go stale
+  // when a version is published from Review while this pane is open).
+  const [libraryTick, setLibraryTick] = useState(0)
+  useEffect(() => window.ghost.library.onChanged(() => setLibraryTick((t) => t + 1)), [])
   useEffect(() => {
     refreshList()
-    return window.ghost.library.onChanged(refreshList)
-  }, [refreshList])
+  }, [refreshList, libraryTick])
   useEffect(() => {
     if (focusId) setSelectedId(focusId)
   }, [focusId])
+  // Match the Task map: open on the first skill instead of an empty detail.
+  useEffect(() => {
+    if (!selectedId && summaries.length > 0) setSelectedId(summaries[0]?.id ?? null)
+  }, [summaries, selectedId])
   useEffect(() => {
     setSkill(null)
     setVersion(null)
     if (selectedId) refreshSkill(selectedId)
   }, [selectedId, refreshSkill])
+  // On library changes refetch in place (no reset): an in-progress recipe
+  // edit survives because equal fields don't re-run the sync effects.
+  useEffect(() => {
+    if (libraryTick > 0 && selectedId) refreshSkill(selectedId)
+  }, [libraryTick, selectedId, refreshSkill])
 
   const record: SkillVersionRecord | null =
     skill?.versions.find((v) => v.version === version) ?? null
@@ -164,9 +177,9 @@ export function SkillsSection({
       <div className="library-list" role="listbox" aria-label="Skills">
         {summaries.length === 0 && (
           <div>
-            <p className="muted">No skills yet. Compile a recording to create one.</p>
-            <Button data-semid="empty-open-recordings" onClick={() => onNavigate?.('recordings')}>
-              Go to recordings
+            <p className="muted">No skills yet. Teach a task to create one.</p>
+            <Button data-semid="library-empty-teach" onClick={() => onTeach?.()}>
+              Teach a new task
             </Button>
           </div>
         )}
@@ -227,8 +240,9 @@ export function SkillsSection({
               <>
                 <p className="muted">
                   Created {new Date(record.createdAt).toLocaleString()}
-                  {record.recordingIds.length > 0 &&
-                    ` · Evidence: ${record.recordingIds.join(', ')}`}
+                  {record.recordingIds.length > 0
+                    ? ` · Evidence: ${record.recordingIds.join(', ')}`
+                    : ' · Starter'}
                 </p>
                 {record.unresolved.length > 0 && (
                   <ul className="alert-warn" data-semid="skill-unresolved">
@@ -262,6 +276,9 @@ export function SkillsSection({
                           </div>
                         )}
                         {step.why && <div className="muted">Why: {step.why}</div>}
+                        {step.kind === 'decide' && step.rules && (
+                          <RulesCard rules={step.rules} options={step.options} />
+                        )}
                       </li>
                     ))}
                   </ol>

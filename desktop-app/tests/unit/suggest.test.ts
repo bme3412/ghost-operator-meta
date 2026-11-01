@@ -101,8 +101,8 @@ describe('suggestion schema', () => {
     ).toThrow()
   })
 
-  it('keeps suggestions optional on the v5 store schema', () => {
-    expect(PersistedState.shape.schemaVersion.value).toBe(5)
+  it('keeps suggestions optional on the current store schema', () => {
+    expect(PersistedState.shape.schemaVersion.value).toBe(6)
     expect(defaultState()).not.toHaveProperty('suggestions')
     expect(PersistedState.parse(defaultState())).not.toHaveProperty('suggestions')
     const withSuggestions = { ...defaultState(), suggestions: [suggestion()] }

@@ -47,7 +47,7 @@ export function resolveBindings(
 
 /** Target-page highlight selector for a step, or null when it has none. */
 export function selectorForStep(step: SkillStep, inputs: Record<string, string>): string | null {
-  const selector = step.bindings['selector']
+  const selector = step.bindings['selector'] ?? step.bindings['readSelector']
   if (!selector) return null
   try {
     return resolveSelectorPlaceholders(selector, inputs)

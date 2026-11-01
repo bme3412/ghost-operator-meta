@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { RunRecord } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
+import { DecisionList } from '../../components/Decisions'
 import { friendlyError } from '../../lib/errors'
 import { checkLabel, humanizeKey } from '../../lib/humanize'
 import type { OnNav } from '../nav'
@@ -47,6 +48,10 @@ export function ResultView({ onNav, runId }: { onNav: OnNav; runId: string }): R
           <p className="alert-success" role="status" data-semid="run-succeeded">
             {skillName ?? record.skillId} ran successfully. Business state verified.
           </p>
+        ) : record.status === 'escalated' ? (
+          <p className="alert-warn" role="status" data-semid="run-escalated">
+            Ghost handed this case back to you instead of guessing.
+          </p>
         ) : (
           <p className="alert-warn" role="status" data-semid="run-ended">
             {skillName ?? record.skillId} run {record.status}.
@@ -64,6 +69,7 @@ export function ResultView({ onNav, runId }: { onNav: OnNav; runId: string }): R
               .join(' · ')}
           </p>
         )}
+        <DecisionList decisions={record.decisions} />
         {record.checks.length > 0 && (
           <ul data-semid="run-checks">
             {record.checks.map((check, index) => (

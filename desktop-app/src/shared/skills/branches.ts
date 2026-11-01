@@ -14,6 +14,11 @@ export function stepOutcomes(step: SkillStep): string[] {
       ]
     case 'review':
       return ['approved → next step', 'stopped → run cancelled']
+    case 'decide':
+      return [
+        `one of your rules fits → ${(step.options ?? []).join(' or ') || 'its choice'}, then next step`,
+        'no rule fits, or the case is unusual → handed back to you (escalated)'
+      ]
     case 'tool':
       return ['tool succeeds → next step', 'tool fails → run fails with message']
     default:

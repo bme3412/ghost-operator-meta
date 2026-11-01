@@ -58,6 +58,13 @@ export interface StarterTask {
 /** Curated Saltbreak demo tasks: tap a card, review the script, run it, run it again. */
 export const SALTBREAK_STARTER_TASKS: StarterTask[] = [
   {
+    id: 'handle-after-hours-tickets',
+    audience: 'owner',
+    title: 'Handle after-hours support tickets',
+    exampleInputs: { ticketId: 'T-201' },
+    startPath: '/staff/inbox'
+  },
+  {
     id: 'reconcile-payout',
     audience: 'owner',
     title: 'Reconcile payout PO-1043 in Books',
@@ -70,20 +77,6 @@ export const SALTBREAK_STARTER_TASKS: StarterTask[] = [
     title: 'Answer ticket T-101 from product facts',
     exampleInputs: { ticketId: 'T-101' },
     startPath: '/staff/inbox'
-  },
-  {
-    id: 'shop-under-budget',
-    audience: 'shopper',
-    title: 'Find an in-stock beginner board under $500 and add it to the cart',
-    exampleInputs: { maxDollars: '500' },
-    startPath: '/shop'
-  },
-  {
-    id: 'report-order-charge',
-    audience: 'shopper',
-    title: 'Report a duplicate charge on order SB-8014',
-    exampleInputs: { orderId: 'SB-8014', reason: 'Charged twice' },
-    startPath: '/order/SB-8014'
   }
 ]
 

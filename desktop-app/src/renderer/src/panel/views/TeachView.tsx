@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { PageIdea, PageIdeasResult } from '../../../../shared/schemas'
+import type { PageIdea, PageIdeasResult, SkillSummary } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
 import { friendlyError } from '../../lib/errors'
+import { publishedSkillForStarter } from '../../lib/starters'
 import type { OnNav } from '../nav'
 import { PageIdeas } from '../PageIdeas'
 
@@ -22,12 +23,17 @@ export function TeachView({
   const [busy, setBusy] = useState(false)
   const [siteId, setSiteId] = useState<string | null>(null)
   const [topIdea, setTopIdea] = useState<PageIdea | null>(null)
+  const [published, setPublished] = useState<SkillSummary[]>([])
   const goalRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     window.ghost.target
       .getInfo()
       .then((info) => setSiteId(info.id))
+      .catch(() => undefined)
+    window.ghost.skills
+      .list()
+      .then((rows) => setPublished(rows.filter((row) => row.activeVersion !== null)))
       .catch(() => undefined)
   }, [])
 
@@ -96,7 +102,14 @@ export function TeachView({
           selectedId={selected?.id ?? null}
           onTeach={teachIdea}
           onResult={handleResult}
-          onStarter={(task) => onNav({ view: 'review', scriptedId: task.id, scriptName: task.title })}
+          onStarter={(task) => {
+            const existing = publishedSkillForStarter(published, task)
+            if (existing) {
+              onNav({ view: 'runSetup', skillId: existing.id, demonstrated: task.exampleInputs })
+            } else {
+              onNav({ view: 'review', scriptedId: task.id, scriptName: task.title })
+            }
+          }}
         />
         <form
           onSubmit={(event) => {

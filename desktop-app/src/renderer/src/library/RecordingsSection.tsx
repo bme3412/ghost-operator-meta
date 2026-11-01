@@ -11,9 +11,11 @@ import { Screenshot } from './Screenshot'
 
 export function RecordingsSection({
   focusId,
+  onTeach,
   onSkillSaved
 }: {
   focusId: string | null
+  onTeach?: () => void
   onSkillSaved: (skillId: string) => void
 }): React.JSX.Element {
   const [summaries, setSummaries] = useState<RecordingSummary[]>([])
@@ -113,7 +115,12 @@ export function RecordingsSection({
     <div className="library-split">
       <div className="library-list" role="listbox" aria-label="Recordings">
         {summaries.length === 0 && (
-          <p className="muted">No recordings yet. Teach a task from Home to create one.</p>
+          <div>
+            <p className="muted">No recordings yet.</p>
+            <Button data-semid="library-empty-teach" onClick={() => onTeach?.()}>
+              Teach a new task
+            </Button>
+          </div>
         )}
         {summaries.map((summary) => (
           <button

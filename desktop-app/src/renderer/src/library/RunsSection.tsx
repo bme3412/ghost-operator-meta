@@ -1,13 +1,28 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RunRecord, SkillSummary } from '../../../shared/schemas'
+import { Button } from '../components/Button'
+import { DecisionList } from '../components/Decisions'
 import { friendlyError } from '../lib/errors'
+import { runModeLabel, runStatusLabel, stepLabel } from '../lib/humanize'
 
-export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.Element {
+export function RunsSection({
+  focusId,
+  onRunSkill
+}: {
+  focusId: string | null
+  onRunSkill?: () => void
+}): React.JSX.Element {
   const [runs, setRuns] = useState<RunRecord[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(focusId)
   const [detail, setDetail] = useState<RunRecord | null>(null)
   const [skillNames, setSkillNames] = useState<Map<string, string>>(new Map())
+  const [stepLabels, setStepLabels] = useState<Map<string, string>>(new Map())
   const [error, setError] = useState<string | null>(null)
+  const selectedRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    selectedRef.current = selectedId
+  }, [selectedId])
 
   useEffect(() => {
     const load = (): void => {
@@ -19,6 +34,14 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
         .list()
         .then((rows: SkillSummary[]) => setSkillNames(new Map(rows.map((row) => [row.id, row.name]))))
         .catch(() => undefined)
+      // Keep the open record fresh too: the list reloading alone left the
+      // detail pane showing a stale snapshot of a running run.
+      if (selectedRef.current) {
+        window.ghost.runs
+          .get(selectedRef.current)
+          .then(setDetail)
+          .catch(() => undefined)
+      }
     }
     load()
     const offLibrary = window.ghost.library.onChanged(load)
@@ -40,10 +63,33 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
       .catch((err: unknown) => setError(friendlyError(err)))
   }, [selectedId])
 
+  const detailSkillId = detail?.skillId
+  const detailSkillVersion = detail?.skillVersion
+  useEffect(() => {
+    setStepLabels(new Map())
+    if (!detailSkillId || detailSkillVersion === undefined) return
+    window.ghost.skills
+      .get(detailSkillId)
+      .then((skill) => {
+        const record = skill?.versions.find((v) => v.version === detailSkillVersion)
+        if (record) {
+          setStepLabels(new Map(record.recipe.steps.map((s) => [s.id, stepLabel(s)])))
+        }
+      })
+      .catch(() => undefined)
+  }, [detailSkillId, detailSkillVersion])
+
   return (
     <div className="library-split">
       <div className="library-list" role="listbox" aria-label="Runs">
-        {runs.length === 0 && <p className="muted">No runs yet. Run a skill from Home.</p>}
+        {runs.length === 0 && (
+          <div>
+            <p className="muted">No runs yet.</p>
+            <Button data-semid="library-empty-run" onClick={() => onRunSkill?.()}>
+              Run a skill
+            </Button>
+          </div>
+        )}
         {runs.map((run) => (
           <button
             key={run.id}
@@ -57,7 +103,8 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
               {skillNames.get(run.skillId) ?? run.skillId} v{run.skillVersion}
             </strong>
             <span className="muted">
-              {run.mode} · {run.status} · {new Date(run.startedAt).toLocaleString()}
+              {runModeLabel(run.mode)} · {runStatusLabel(run.status)} ·{' '}
+              {new Date(run.startedAt).toLocaleString()}
             </span>
           </button>
         ))}
@@ -74,7 +121,7 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
             <h2 data-semid="run-heading">
               {skillNames.get(detail.skillId) ?? detail.skillId} v{detail.skillVersion}{' '}
               <span className="muted">
-                ({detail.mode} · {detail.status})
+                ({runModeLabel(detail.mode)} · {runStatusLabel(detail.status)})
               </span>
             </h2>
             <p className="muted">
@@ -96,13 +143,24 @@ export function RunsSection({ focusId }: { focusId: string | null }): React.JSX.
                 ))}
               </ul>
             </section>
+            {detail.decisions.length > 0 && (
+              <section aria-label="Decisions">
+                <h3>Decisions</h3>
+                <DecisionList decisions={detail.decisions} />
+              </section>
+            )}
             <section aria-label="Step attempts">
               <h3>Step attempts</h3>
               {detail.attempts.length === 0 && <p className="muted">No attempts recorded.</p>}
               <ol data-semid="run-attempts">
                 {detail.attempts.map((attempt, index) => (
                   <li key={`${attempt.stepId}-${index}`}>
-                    <strong>{attempt.stepId}</strong> (attempt {attempt.attempt + 1})
+                    {stepLabels.has(attempt.stepId) ? (
+                      <strong>{stepLabels.get(attempt.stepId)}</strong>
+                    ) : (
+                      <span className="muted">{attempt.stepId}</span>
+                    )}{' '}
+                    (attempt {attempt.attempt + 1})
                     {attempt.passed !== undefined && (attempt.passed ? ' ✓' : ' ✗')}
                     <div className="muted">{attempt.observedOutcome}</div>
                     {attempt.actions.length > 0 && (

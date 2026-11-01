@@ -21,8 +21,8 @@ export {
   upsertDraft,
 } from './catalog';
 export type { Draft, DraftInput, Product, Promo, ShopSort, SourceRecord, StockEvent, StockRow } from './catalog';
-export { addReply, cancelOrder, checkout, createTicket, getOrder, getOrderByNumber, listOrders, listTickets, setOrderStatus, setTicketStatus } from './orders';
-export type { CheckoutLine, Order, OrderItem, Ticket, TicketReply } from './orders';
+export { addReply, cancelOrder, checkout, createTicket, getOrder, getOrderByNumber, listOrders, listTickets, resolveTicket, setOrderStatus, setTicketStatus, TICKET_RESOLUTIONS } from './orders';
+export type { CheckoutLine, Order, OrderItem, Ticket, TicketReply, TicketResolution } from './orders';
 export { countQueued, listEmails, queueEmail, sendEmail } from './emails';
 export type { Email } from './emails';
 export { listEvents, logEvent } from './events';

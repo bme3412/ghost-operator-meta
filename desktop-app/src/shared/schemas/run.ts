@@ -8,7 +8,8 @@ export const ExecutionStatus = z.enum([
   'succeeded',
   'paused',
   'failed',
-  'cancelled'
+  'cancelled',
+  'escalated'
 ])
 export type ExecutionStatus = z.infer<typeof ExecutionStatus>
 
@@ -53,6 +54,22 @@ export const CheckResult = z.object({
 })
 export type CheckResult = z.infer<typeof CheckResult>
 
+/** Choice value meaning "my rules don't cover this; hand it back to the owner". */
+export const ESCALATE = 'escalate'
+
+/** One judgment call a decide step made, quoting the rule it applied. */
+export const DecisionRecord = z.object({
+  stepId: z.string().min(1),
+  choice: z.string().min(1),
+  /** The demonstrator's rule, verbatim; null when escalating. */
+  rule: z.string().nullable(),
+  reason: z.string(),
+  /** The page text the decision was made from (trimmed). */
+  evidence: z.string(),
+  at: z.string().min(1)
+})
+export type DecisionRecord = z.infer<typeof DecisionRecord>
+
 /** Full persisted record of a skill execution. */
 export const RunRecord = z.object({
   id: z.string().min(1),
@@ -66,7 +83,12 @@ export const RunRecord = z.object({
   currentStepIndex: z.number().int().nonnegative(),
   attempts: z.array(StepAttempt).default([]),
   checks: z.array(CheckResult).default([]),
+  decisions: z.array(DecisionRecord).default([]),
   awaitingApproval: z.boolean().default(false),
+  /** Set when a decide step handed the case back to the owner. */
+  escalation: z.string().optional(),
+  /** Batch this run belongs to, when started from "Run on many". */
+  batchId: z.string().optional(),
   error: z.string().optional()
 })
 export type RunRecord = z.infer<typeof RunRecord>
@@ -86,6 +108,8 @@ export const RunStepView = z.object({
   expected: z.string().optional(),
   bindings: z.record(z.string(), BindingView).default({}),
   checks: z.array(z.string()).default([]),
+  rules: z.array(z.string()).optional(),
+  options: z.array(z.string()).optional(),
   status: z.enum(['done', 'current', 'todo'])
 })
 export type RunStepView = z.infer<typeof RunStepView>
@@ -102,7 +126,12 @@ export const RunProgress = z.object({
   current: RunStepView.nullable(),
   steps: z.array(RunStepView).default([]),
   checks: z.array(CheckResult).default([]),
+  decisions: z.array(DecisionRecord).default([]),
   awaitingApproval: z.boolean().default(false),
+  escalation: z.string().optional(),
+  batch: z
+    .object({ id: z.string(), index: z.number().int().nonnegative(), total: z.number().int().positive() })
+    .optional(),
   error: z.string().optional()
 })
 export type RunProgress = z.infer<typeof RunProgress>
@@ -114,6 +143,51 @@ export const StartRunRequest = z.object({
   inputs: z.record(z.string().max(64), z.string().max(500))
 })
 export type StartRunRequest = z.infer<typeof StartRunRequest>
+
+/** One case in a "Run on many" batch. */
+export const BatchItem = z.object({
+  /** The case id, bound to the batch's input key (e.g. T-202). */
+  caseId: z.string().min(1),
+  status: z.union([ExecutionStatus, z.literal('pending')]),
+  runId: z.string().optional(),
+  /** The decide step's choice, when there was one. */
+  choice: z.string().optional(),
+  rule: z.string().nullable().optional(),
+  reason: z.string().optional(),
+  /** The case text Ghost read, for the away page. */
+  evidence: z.string().optional(),
+  error: z.string().optional()
+})
+export type BatchItem = z.infer<typeof BatchItem>
+
+/** A sequence of runs of one skill over many cases, while the owner is away. */
+export const BatchRecord = z.object({
+  id: z.string().min(1),
+  skillId: z.string().min(1),
+  skillName: z.string(),
+  /** Run input each case id is bound to. */
+  inputKey: z.string().min(1),
+  /** Inputs shared by every case. */
+  sharedInputs: z.record(z.string(), z.string()).default({}),
+  items: z.array(BatchItem),
+  status: z.enum(['running', 'done', 'cancelled']),
+  startedAt: z.string().min(1),
+  endedAt: z.string().optional(),
+  /** Phone notification outcome. */
+  notifiedAt: z.string().optional(),
+  notifyError: z.string().optional()
+})
+export type BatchRecord = z.infer<typeof BatchRecord>
+
+export const StartBatchRequest = z.object({
+  skillId: z.string().min(1),
+  inputKey: z.string().min(1).max(64),
+  caseIds: z.array(z.string().min(1).max(64)).min(1).max(50),
+  sharedInputs: z.record(z.string().max(64), z.string().max(500)).default({})
+})
+export type StartBatchRequest = z.infer<typeof StartBatchRequest>
+
+export const BatchIdPayload = z.object({ batchId: z.string().min(1) })
 
 export const RunIdPayload = z.object({ runId: z.string().min(1) })
 export type RunIdPayload = z.infer<typeof RunIdPayload>

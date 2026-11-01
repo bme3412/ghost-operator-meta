@@ -54,7 +54,10 @@
         "dmg",
         "dir"
       ],
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Ghost Operator listens only while the mic button is on, to turn your spoken rules into a note."
+      }
     }
   }
 }

@@ -6,6 +6,7 @@ export type PanelView =
   | 'runSetup'
   | 'running'
   | 'result'
+  | 'batch'
   | 'library'
   | 'settings'
 
@@ -21,6 +22,7 @@ export interface PanelNav {
   recordingId?: string
   skillId?: string
   runId?: string
+  batchId?: string
   goal?: string
   /** Example input prefill for the Teach form (from a page idea). */
   example?: string
@@ -37,4 +39,4 @@ export interface PanelNav {
 
 export type OnNav = (nav: PanelNav) => void
 
-export const TERMINAL_RUN = new Set(['succeeded', 'failed', 'cancelled'])
+export const TERMINAL_RUN = new Set(['succeeded', 'failed', 'cancelled', 'escalated'])

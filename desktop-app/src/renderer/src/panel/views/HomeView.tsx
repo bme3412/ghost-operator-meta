@@ -3,6 +3,7 @@ import type { RecorderStatePush, RunProgress, SkillSummary } from '../../../../s
 import type { TargetStatus } from '../../../../shared/target'
 import { Button } from '../../components/Button'
 import { friendlyError } from '../../lib/errors'
+import { publishedSkillForStarter } from '../../lib/starters'
 import { TERMINAL_RUN, type OnNav } from '../nav'
 import { PageIdeas } from '../PageIdeas'
 
@@ -198,7 +199,15 @@ export function HomeView({
 
       <PageIdeas
         onTeach={(idea) => onNav({ view: 'teach', goal: idea.title, example: idea.exampleInput })}
-        onStarter={(task) => onNav({ view: 'review', scriptedId: task.id, scriptName: task.title })}
+        onStarter={(task) => {
+          // Already published (seeded or taught): run it; don't teach a copy.
+          const existing = publishedSkillForStarter(skills, task)
+          if (existing) {
+            onNav({ view: 'runSetup', skillId: existing.id, demonstrated: task.exampleInputs })
+          } else {
+            onNav({ view: 'review', scriptedId: task.id, scriptName: task.title })
+          }
+        }}
       />
     </div>
   )

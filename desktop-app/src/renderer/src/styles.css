@@ -553,11 +553,6 @@ dd {
   color: var(--text-muted);
 }
 
-.idea-row .audience {
-  font-size: 11px;
-  white-space: nowrap;
-}
-
 .run-list {
   list-style: none;
   margin: 8px 0 0;
@@ -636,4 +631,73 @@ details.advanced > summary {
   cursor: pointer;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.rules-card {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.rules-card ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.rules-card p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.decision-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.decision {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.decision.escalated {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.decision-evidence {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.batch-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.batch-list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.batch-list .batch-id {
+  font-weight: 600;
+  min-width: 52px;
+}
+
+.mic-button.recording {
+  color: var(--danger);
+  border-color: var(--danger);
 }

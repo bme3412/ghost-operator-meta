@@ -77,8 +77,53 @@ environment variables always win over that file. Packaged builds read
 | `META_BASE_URL` | `https://api.meta.ai/v1` | Meta-compatible chat endpoint |
 | `SPARK_MODEL` | `muse-spark-1.3` | Model id for generation and explanation |
 | `GHOST_STATE_PATH` | userData / `.local-state/` | Override the state file (tests, e2e) |
+| `NTFY_TOPIC` | — | ntfy topic for the "batch finished" phone push; unset means no push |
+| `NTFY_SERVER` | `https://ntfy.sh` | ntfy server |
+| `GHOST_AWAY_HOST` | LAN IPv4 | Host the "while you were away" page binds to and links to |
+| `GHOST_AWAY_PORT` | `3200` | Port for the away page |
+| `GHOST_AWAY_SECRET` | random per launch | Signs away-page links; set it to keep links valid across restarts |
+| `TRANSCRIBE_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible `/audio/transcriptions` endpoint for spoken notes |
+| `TRANSCRIBE_API_KEY` | — | Transcription key; without it the mic returns a canned transcript |
+| `TRANSCRIBE_MODEL` | `whisper-1` | Transcription model id |
+
+## Demo script: the Vacation
+
+Maya teaches Ghost one support ticket on Thursday, says her rules out loud,
+and goes surfing. Ghost clears the after-hours pile and hands back the one
+case her rules don't cover.
+
+Setup: `pnpm db:reset` in `web-app` (seeds the after-hours pile T-201 to
+T-208), set `NTFY_TOPIC` in `.env.local`, subscribe to that topic in the ntfy
+phone app, and put the phone on the same Wi-Fi as the laptop.
+
+1. Open Staff → Support inbox in the target window. Eight open tickets: four
+   shipping-damage, three wrong-size, one bank chargeback (T-207).
+2. **Teach a new task**, goal `Handle after-hours support tickets`.
+3. On T-201 (a dinged board), click **Refund**.
+4. Click **Add note**, then **Say it**, and say: "Damaged in shipping means
+   refund. Wrong size means exchange. Anything else, ask me." Click **Stop
+   listening**, edit the transcript if needed, then save the note. (Typing the
+   note works the same way; without `TRANSCRIBE_API_KEY` the mic fills in
+   exactly this sample.)
+5. **Finish**. The review shows a "Decide using your rules" step with your
+   three rules quoted word for word, then "Carry out the decision".
+6. **Save and publish**. In run setup pick **Run on many**, click **Find open
+   cases on this page**, then **Run on 7 cases**.
+7. Ghost works through T-202 to T-208. Each refund or exchange quotes the rule
+   it used; T-207 ends as "Needs you" because no rule covers a chargeback.
+8. The phone buzzes: "Ghost resolved 6 tickets. 1 needs you." Tapping it opens
+   the away page with T-207 at the top.
+
+No Saltbreak reset? The curated starter **Handle after-hours support tickets**
+on Home loads the same skill without a demonstration.
 
 ## Demo script (the first complete experience)
+
+A fresh install on Saltbreak comes with three starter skills already
+published, and the site is scanned once automatically, so Home and the Task
+map are populated on first launch. Starter cards open run setup directly —
+the steps below teach your own skill alongside them, and **Save and publish**
+still creates that taught skill as a separate entry.
 
 1. Confirm the green target connection on Home.
 2. Click **Teach a new task** and name the goal, e.g. `Resolve a support ticket`.
@@ -106,7 +151,15 @@ on one to open Teach with its goal prefilled.
   committed DOM events; the runner replays real clicks/fills/submits and
   verifies by reading the live page. Ghost never imports Saltbreak code.
 - One authoritative store in the main process, persisted as versioned JSON
-  (current: schema v5; Harbor-era states migrate forward keeping recordings).
+  (current: schema v6, which adds batches; v5 states migrate forward unchanged,
+  and Harbor-era states migrate forward keeping recordings).
+- Decide steps apply the demonstrator's spoken or typed rules to the case on
+  the page. A covered case writes its choice into the run inputs (for example
+  `{{inputs.resolution}}` picks the Refund or Exchange button); anything else
+  ends the run as `escalated` instead of guessing.
+- Batches ("Run on many") run one skill over many cases in "Do it for me" mode,
+  then push a summary to the owner's phone (ntfy) linking to a signed,
+  LAN-only "while you were away" page served on `GHOST_AWAY_PORT`.
 - All IPC, persisted data, provider responses, and drafts are Zod-validated.
   Recipes may only use registered DOM actions and checks; `{{inputs.*}}`
   placeholders bind run inputs into selectors and values.
