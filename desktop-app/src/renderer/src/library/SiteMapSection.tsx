@@ -5,6 +5,7 @@ import type { ScoutProgress, ScoutStatus, SiteMap } from '../../../shared/schema
 import { scoutHrefPath } from '../../../shared/scout'
 import { Button } from '../components/Button'
 import { friendlyError } from '../lib/errors'
+import { ghostNodeTypes, type GhostFlowNode } from './GhostNode'
 
 const SITE_X = 40
 const SITE_COL = 300
@@ -12,17 +13,24 @@ const SITE_ROW = 120
 const SITE_COLS = 3
 
 function siteGraph(sitemap: SiteMap): {
-  nodes: Array<{ id: string; position: { x: number; y: number }; data: { label: string } }>
+  nodes: GhostFlowNode[]
   edges: Array<{ id: string; source: string; target: string }>
 } {
   const known = new Set(sitemap.pages.map((page) => page.path))
-  const nodes = sitemap.pages.map((page, index) => ({
+  const nodes: GhostFlowNode[] = sitemap.pages.map((page, index) => ({
     id: page.path,
+    type: 'ghost',
     position: {
       x: SITE_X + (index % SITE_COLS) * SITE_COL,
       y: Math.floor(index / SITE_COLS) * SITE_ROW
     },
-    data: { label: `${page.path}\n${page.title || 'untitled'}` }
+    data: {
+      title: page.path,
+      subtitle:
+        page.forms.length > 0 || page.links.length > 0
+          ? `${page.forms.length} form${page.forms.length === 1 ? '' : 's'} · ${page.links.length} link${page.links.length === 1 ? '' : 's'}`
+          : page.title || 'Untitled page'
+    }
   }))
   const edges: Array<{ id: string; source: string; target: string }> = []
   const seen = new Set<string>()
@@ -137,7 +145,15 @@ export function SiteMapSection(): React.JSX.Element {
       )}
       {status?.sitemap && (
         <div className="flow-wrap" data-testid="site-map" data-semid="site-map">
-          <ReactFlow nodes={graph.nodes} edges={graph.edges} fitView>
+          <ReactFlow
+            nodes={graph.nodes}
+            edges={graph.edges}
+            nodeTypes={ghostNodeTypes}
+            nodesDraggable={false}
+            fitView
+            fitViewOptions={{ padding: 0.15, minZoom: 0.75 }}
+            proOptions={{ hideAttribution: true }}
+          >
             <Background />
             <Controls />
           </ReactFlow>

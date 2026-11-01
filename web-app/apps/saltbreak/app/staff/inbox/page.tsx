@@ -12,7 +12,7 @@ export default function InboxPage() {
     <Shell title="Support inbox" blurb={`${tickets.length} tickets. Replies are staff-posted; sourced answers arrive with the knowledge-card slice.`}>
       <ul data-semid="inbox-list" className="divide-y divide-neutral-200 border-y border-neutral-200">
         {tickets.map((t) => (
-          <li key={t.id} data-semid={`ticket-row-${t.id}`} data-ticket-id={t.id} className="py-3">
+          <li key={t.id} data-semid={`ticket-row-${t.id}`} data-ticket-id={t.id} className="py-5">
             <div className="flex items-baseline gap-3">
               <span className="text-sm font-medium">{t.id}</span>
               <span className="flex-1 text-sm">{t.subject}</span>
@@ -72,7 +72,7 @@ export default function InboxPage() {
                         type="submit"
                         data-semid={`ticket-${r}-${t.id}`}
                         disabled={t.resolution !== null}
-                        className="border border-teal-700 px-2 py-0.5 text-xs text-teal-800 disabled:opacity-40"
+                        className="bg-teal-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
                       >
                         {r === 'refund' ? 'Refund' : 'Exchange'}
                       </button>

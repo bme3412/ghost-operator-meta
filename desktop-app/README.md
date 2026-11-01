@@ -92,27 +92,41 @@ Maya teaches Ghost one support ticket on Thursday, says her rules out loud,
 and goes surfing. Ghost clears the after-hours pile and hands back the one
 case her rules don't cover.
 
-Setup: `pnpm db:reset` in `web-app` (seeds the after-hours pile T-201 to
-T-208), set `NTFY_TOPIC` in `.env.local`, subscribe to that topic in the ntfy
-phone app, and put the phone on the same Wi-Fi as the laptop.
+Setup: start `pnpm dev:saltbreak` in `web-app` first — recording before the
+site is up only captures the "Saltbreak unreachable" offline page. Then
+`pnpm db:reset` (seeds the after-hours pile T-201 to T-208), set `NTFY_TOPIC`
+in `.env.local`, subscribe to that topic in the ntfy phone app, and put the
+phone on the same Wi-Fi as the laptop. The panel stays docked (420px) for
+teaching; it expands only for the closing Library shot, where both windows
+reflow side by side automatically — never drag windows by hand on camera.
 
-1. Open Staff → Support inbox in the target window. Eight open tickets: four
-   shipping-damage, three wrong-size, one bank chargeback (T-207).
-2. **Teach a new task**, goal `Handle after-hours support tickets`.
-3. On T-201 (a dinged board), click **Refund**.
-4. Click **Add note**, then **Say it**, and say: "Damaged in shipping means
-   refund. Wrong size means exchange. Anything else, ask me." Click **Stop
-   listening**, edit the transcript if needed, then save the note. (Typing the
-   note works the same way; without `TRANSCRIBE_API_KEY` the mic fills in
-   exactly this sample.)
-5. **Finish**. The review shows a "Decide using your rules" step with your
-   three rules quoted word for word, then "Carry out the decision".
-6. **Save and publish**. In run setup pick **Run on many**, click **Find open
-   cases on this page**, then **Run on 7 cases**.
-7. Ghost works through T-202 to T-208. Each refund or exchange quotes the rule
-   it used; T-207 ends as "Needs you" because no rule covers a chargeback.
-8. The phone buzzes: "Ghost resolved 6 tickets. 1 needs you." Tapping it opens
-   the away page with T-207 at the top.
+Timed beats (3 minutes):
+
+1. **0:00 — Teach (docked, inbox large).** Open Staff → Support inbox in the
+   target window. Eight open tickets: four shipping-damage, three wrong-size,
+   one bank chargeback (T-207). **Teach a new task**, goal
+   `Handle after-hours support tickets`.
+2. **0:30 — Demonstrate.** On T-201 (a dinged board), click **Refund**.
+3. **0:45 — Say the rules.** Click **Add note**, then **Say it**, and say:
+   "Damaged in shipping means refund. Wrong size means exchange. Anything
+   else, ask me." Click **Stop listening**, edit the transcript if needed,
+   then save the note. (Typing works the same way; without
+   `TRANSCRIBE_API_KEY` the mic fills in exactly this sample.)
+4. **1:15 — Review.** **Finish**. The review shows a "Decide using your rules"
+   step with your three rules quoted word for word, then "Carry out the
+   decision".
+5. **1:45 — Publish and batch.** **Save and publish**. In run setup pick
+   **Run on many**, click **Find open cases on this page**, then
+   **Run on 7 cases**.
+6. **2:00 — Ghost works.** T-202 to T-208 run one by one. Each refund or
+   exchange quotes the rule it used; T-207 ends as "Needs you" because no
+   rule covers a chargeback.
+7. **2:40 — The map (expanded).** Open **Library → Task map**. The windows
+   reflow on camera: Saltbreak left, Ghost right. The skill reads as one
+   spine — Inputs, steps in plain language, Verification — with Suggestions
+   underneath. This is the closing frame.
+8. **2:55 — The handoff.** The phone buzzes: "Ghost resolved 6 tickets. 1
+   needs you." Tapping it opens the away page with T-207 at the top.
 
 No Saltbreak reset? The curated starter **Handle after-hours support tickets**
 on Home loads the same skill without a demonstration.

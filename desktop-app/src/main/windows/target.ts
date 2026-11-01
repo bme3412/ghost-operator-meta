@@ -40,7 +40,7 @@ export function createTargetWindow(placement?: {
     useContentSize: true,
     x: placement?.x,
     y: placement?.y,
-    minWidth: 960,
+    minWidth: 640,
     minHeight: 640,
     webPreferences: {
       ...baseWebPreferences(),

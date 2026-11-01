@@ -10,17 +10,20 @@ import type {
 } from '../../../shared/schemas'
 import { Button } from '../components/Button'
 import { friendlyError } from '../lib/errors'
-import { runModeLabel, runStatusLabel, stepLabel } from '../lib/humanize'
+import { checkLabel, humanizeKey, runModeLabel, runStatusLabel, stepLabel } from '../lib/humanize'
+import { ghostNodeTypes, type GhostFlowNode } from './GhostNode'
 import { SiteMapSection } from './SiteMapSection'
 
 const X_MAIN = 40
-const X_SIDE = 460
+const X_SIDE = 360
 const ROW = 120
 
-function bindingLabel(bindings: Record<string, string>): string {
-  const entries = Object.entries(bindings)
-  if (entries.length === 0) return ''
-  return entries.map(([name, path]) => `${name} ← ${path}`).join(', ')
+/** Node-face phrasing for a bound input: "Uses the Ticket ID on the page." */
+function bindingPhrase(bindings: Record<string, string>): string | undefined {
+  const key = Object.values(bindings)
+    .map((path) => path.replace(/^inputs\./, ''))
+    .find((path) => path !== '')
+  return key ? `Uses the ${humanizeKey(key)} on the page.` : undefined
 }
 
 export function MapSection({
@@ -137,11 +140,19 @@ export function MapSection({
   }, [record?.version, record?.recordingIds.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const graph = useMemo(() => {
-    if (!skill || !record) return { nodes: [], edges: [] }
-    const recipe = record.recipe
-    const nodes: Array<{ id: string; position: { x: number; y: number }; data: { label: string } }> = []
+    const nodes: GhostFlowNode[] = []
     const edges: Array<{ id: string; source: string; target: string; label?: string }> = []
-    nodes.push({ id: 'skill', position: { x: X_MAIN, y: 0 }, data: { label: `${skill.name} v${record.version}` } })
+    if (!skill || !record) return { nodes, edges }
+    const recipe = record.recipe
+    // One vertical spine: skill, inputs, steps, verification. Evidence and
+    // recent runs form a narrow second column only when they exist, so
+    // fitView never zooms out to fit empty width.
+    nodes.push({
+      id: 'skill',
+      type: 'ghost',
+      position: { x: X_MAIN, y: 0 },
+      data: { title: skill.name, subtitle: `Version ${record.version}` }
+    })
     const inputKeys = [
       ...new Set(
         recipe.steps.flatMap((step) =>
@@ -151,26 +162,41 @@ export function MapSection({
     ]
     nodes.push({
       id: 'inputs',
+      type: 'ghost',
       position: { x: X_MAIN, y: ROW },
-      data: { label: `Inputs\n${inputKeys.join(', ') || 'none'}` }
+      data: {
+        title: 'Inputs',
+        subtitle: inputKeys.length > 0 ? inputKeys.map(humanizeKey).join(', ') : 'No inputs'
+      }
     })
     edges.push({ id: 'e-skill-inputs', source: 'skill', target: 'inputs' })
     recipe.steps.forEach((step, index) => {
       const id = `step-${step.id}`
       nodes.push({
         id,
+        type: 'ghost',
         position: { x: X_MAIN, y: ROW * 2 + index * ROW },
-        data: { label: `${stepLabel(step)}${step.checks.length > 0 ? `\nchecks: ${step.checks.map((c) => c.name).join(', ')}` : ''}` }
+        data: {
+          title: stepLabel(step),
+          subtitle:
+            step.checks.length > 0
+              ? step.checks.map((c) => checkLabel(c.name)).join(', ')
+              : bindingPhrase(step.bindings)
+        }
       })
       const from = index === 0 ? 'inputs' : `step-${recipe.steps[index - 1]?.id}`
-      edges.push({ id: `e-${from}-${id}`, source: from, target: id, label: bindingLabel(step.bindings) })
+      edges.push({ id: `e-${from}-${id}`, source: from, target: id })
     })
     const checks = [...new Set(recipe.steps.flatMap((step) => step.checks.map((c) => c.name)))]
     const checksY = ROW * 2 + recipe.steps.length * ROW
     nodes.push({
       id: 'checks',
+      type: 'ghost',
       position: { x: X_MAIN, y: checksY },
-      data: { label: `Verification\n${checks.join(', ') || 'none'}` }
+      data: {
+        title: 'Verification',
+        subtitle: checks.length > 0 ? checks.map((name) => checkLabel(name)).join(', ') : 'No checks'
+      }
     })
     if (recipe.steps.length > 0) {
       edges.push({
@@ -179,26 +205,31 @@ export function MapSection({
         target: 'checks'
       })
     }
-    nodes.push({
-      id: 'evidence',
-      position: { x: X_SIDE, y: ROW },
-      data: {
-        label:
-          recordings.length === 0
-            ? 'Evidence\nnone linked'
-            : `Evidence\n${recordings.map((r) => `${r.id} (${r.events.length} events)`).join('\n')}`
-      }
-    })
-    edges.push({ id: 'e-skill-evidence', source: 'skill', target: 'evidence', label: 'demonstrated by' })
+    if (recordings.length > 0) {
+      nodes.push({
+        id: 'evidence',
+        type: 'ghost',
+        position: { x: X_SIDE, y: ROW },
+        data: {
+          title: 'Evidence',
+          subtitle: `${recordings.length} recording${recordings.length === 1 ? '' : 's'}`
+        }
+      })
+      edges.push({ id: 'e-skill-evidence', source: 'skill', target: 'evidence', label: 'demonstrated by' })
+    }
     const skillRuns = runs.filter((run) => run.skillId === skill.id).slice(-5)
     skillRuns.forEach((run, index) => {
       const id = `run-${run.id}`
       nodes.push({
         id,
+        type: 'ghost',
         position: { x: X_SIDE, y: ROW * 2 + index * ROW },
-        data: { label: `${runModeLabel(run.mode)} · ${runStatusLabel(run.status)}` }
+        data: {
+          title: `${runModeLabel(run.mode)} · ${runStatusLabel(run.status)}`,
+          subtitle: `Version ${run.skillVersion} · ${new Date(run.startedAt).toLocaleDateString()}`
+        }
       })
-      edges.push({ id: `e-skill-${id}`, source: 'skill', target: id, label: `v${run.skillVersion}` })
+      edges.push({ id: `e-skill-${id}`, source: 'skill', target: id })
     })
     return { nodes, edges }
   }, [skill, record, recordings, runs])
@@ -212,7 +243,7 @@ export function MapSection({
           {error}
         </p>
       )}
-      <div className="field" role="group" aria-label="Map mode">
+      <div className="map-toolbar" role="group" aria-label="Map mode">
         <Button
           variant={effectiveMode === 'skill' ? 'primary' : 'default'}
           data-testid="map-mode-skill"
@@ -229,6 +260,36 @@ export function MapSection({
         >
           Site
         </Button>
+        {effectiveMode === 'skill' && summaries.length > 0 && (
+          <>
+            <select
+              id="map-skill"
+              aria-label="Skill"
+              data-semid="map-skill-select"
+              value={skillId}
+              onChange={(event) => setSkillId(event.target.value)}
+            >
+              {summaries.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+            <select
+              id="map-version"
+              aria-label="Version"
+              data-semid="map-version-select"
+              value={version ?? ''}
+              onChange={(event) => setVersion(Number(event.target.value))}
+            >
+              {(skill?.versions ?? []).map((v) => (
+                <option key={v.version} value={v.version}>
+                  v{v.version} ({v.status})
+                </option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
       {effectiveMode === 'site' && <SiteMapSection />}
       {effectiveMode === 'skill' && skillsLoaded && summaries.length === 0 && (
@@ -243,41 +304,21 @@ export function MapSection({
       )}
       {effectiveMode === 'skill' && summaries.length > 0 && (
         <>
-          <div className="field">
-            <label htmlFor="map-skill">Skill</label>
-            <select
-              id="map-skill"
-              data-semid="map-skill-select"
-              value={skillId}
-              onChange={(event) => setSkillId(event.target.value)}
-            >
-              {summaries.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </select>
-            <label htmlFor="map-version">Version</label>
-            <select
-              id="map-version"
-              data-semid="map-version-select"
-              value={version ?? ''}
-              onChange={(event) => setVersion(Number(event.target.value))}
-            >
-              {(skill?.versions ?? []).map((v) => (
-                <option key={v.version} value={v.version}>
-                  v{v.version} ({v.status})
-                </option>
-              ))}
-            </select>
-          </div>
           {record && record.unresolved.length > 0 && (
             <p className="alert-warn" data-semid="map-unresolved">
               {record.unresolved.length} unresolved review item(s) on this version.
             </p>
           )}
           <div className="flow-wrap" data-semid="task-map">
-            <ReactFlow nodes={graph.nodes} edges={graph.edges} fitView>
+            <ReactFlow
+              nodes={graph.nodes}
+              edges={graph.edges}
+              nodeTypes={ghostNodeTypes}
+              nodesDraggable={false}
+              fitView
+              fitViewOptions={{ padding: 0.15, minZoom: 0.75 }}
+              proOptions={{ hideAttribution: true }}
+            >
               <Background />
               <Controls />
             </ReactFlow>
