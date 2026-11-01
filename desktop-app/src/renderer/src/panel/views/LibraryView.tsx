@@ -50,7 +50,11 @@ export function LibraryView({
         ))}
       </nav>
       {active === 'skills' && (
-        <SkillsSection focusId={focusSkill} onTeach={() => onNav({ view: 'teach' })} />
+        <SkillsSection
+          focusId={focusSkill}
+          onTeach={() => onNav({ view: 'teach' })}
+          onRunSkill={(skillId) => onNav({ view: 'runSetup', skillId })}
+        />
       )}
       {active === 'runs' && (
         <RunsSection focusId={focusRun} onRunSkill={() => onNav({ view: 'runSetup' })} />

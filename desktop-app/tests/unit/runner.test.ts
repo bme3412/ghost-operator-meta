@@ -662,6 +662,21 @@ describe('check waits', () => {
     expect(sleepCalls.length).toBeGreaterThan(0)
   })
 
+  it('succeeds when the checked text settles after the click (stale readback)', async () => {
+    let calls = 0
+    const { runner } = harness({
+      text: async (selector, base) => {
+        if (selector === '[data-semid="ticket-status-T-102"]' && ++calls <= 3) return 'open'
+        return base(selector)
+      },
+      checkWait: { timeoutMs: 2000, pollMs: 1 }
+    })
+    runner.startRun({ skillId: 'resolve-support-ticket', mode: 'assisted', inputs: INPUTS })
+    const done = await settle(runner)
+    expect(done.status).toBe('succeeded')
+    expect(calls).toBeGreaterThan(3)
+  })
+
   it('fails honestly when a check target never appears', async () => {
     const { runner } = harness({
       text: async (selector, base) =>

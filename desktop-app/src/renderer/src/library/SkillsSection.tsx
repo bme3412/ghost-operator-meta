@@ -15,10 +15,12 @@ import { checkLabel, humanizeKey, stepLabel } from '../lib/humanize'
 
 export function SkillsSection({
   focusId,
-  onTeach
+  onTeach,
+  onRunSkill
 }: {
   focusId: string | null
   onTeach?: () => void
+  onRunSkill?: (skillId: string) => void
 }): React.JSX.Element {
   const [summaries, setSummaries] = useState<SkillSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(focusId)
@@ -222,6 +224,17 @@ export function SkillsSection({
         {skill && (
           <article>
             <h2 data-semid="skill-heading">{skill.name}</h2>
+            {skill.activeVersion !== null && onRunSkill && (
+              <div className="teach-actions">
+                <Button
+                  variant="primary"
+                  data-semid="skill-run"
+                  onClick={() => onRunSkill(skill.id)}
+                >
+                  Run
+                </Button>
+              </div>
+            )}
             <div className="version-tabs" role="tablist" aria-label="Versions">
               {skill.versions.map((v) => (
                 <button

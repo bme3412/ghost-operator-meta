@@ -1,3 +1,4 @@
+export * from './activity'
 export * from './recorder'
 export * from './recording'
 export * from './run'

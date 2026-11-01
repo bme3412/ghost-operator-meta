@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ActivityFeedback, StoredActivityEvent } from './activity'
 import { Recording } from './recording'
 import { BatchRecord, RunRecord } from './run'
 import { SiteMap } from './scout'
@@ -52,7 +53,13 @@ export const PersistedState = z.object({
   /** Curated starter skills were seeded (exactly once per state file). Optional; no version bump. */
   seededStarters: z.boolean().optional(),
   /** "Run on many" batches (v6). */
-  batches: z.array(BatchRecord).default([])
+  batches: z.array(BatchRecord).default([]),
+  /** Now-feed ingestion cursor into Saltbreak's event log. Optional; no version bump. */
+  activityCursor: z.number().optional(),
+  /** Raw Saltbreak events kept for clustering/precedent (capped in the service). Optional. */
+  activityEvents: z.array(StoredActivityEvent).optional(),
+  /** Feed feedback (dismissed / acted) keyed by opportunity signature. Optional. */
+  activityFeedback: z.array(ActivityFeedback).optional()
 })
 export type PersistedState = z.infer<typeof PersistedState>
 

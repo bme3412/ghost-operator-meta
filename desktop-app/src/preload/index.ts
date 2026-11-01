@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  ActivityFeed,
   BatchRecord,
   CompileResult,
   PageIdeasResult,
@@ -137,6 +138,13 @@ const api = {
   },
   library: {
     onChanged: (listener: () => void): (() => void) => on('ghost:library-changed', listener)
+  },
+  activity: {
+    getFeed: (): Promise<ActivityFeed> => ipcRenderer.invoke('activity:get-feed'),
+    dismiss: (signature: string): Promise<void> =>
+      ipcRenderer.invoke('activity:dismiss', { signature }),
+    act: (signature: string): Promise<void> => ipcRenderer.invoke('activity:act', { signature }),
+    onChanged: (listener: () => void): (() => void) => on('ghost:activity-changed', listener)
   },
   runs: {
     start: (request: StartRunRequest): Promise<RunProgress> =>

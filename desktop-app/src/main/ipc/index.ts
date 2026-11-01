@@ -1,3 +1,4 @@
+import { registerActivityHandlers } from './activity'
 import { registerBatchHandlers } from './batches'
 import { registerProviderHandlers } from './providers'
 import { registerRecorderHandlers } from './recorder'
@@ -15,6 +16,7 @@ export function registerIpcHandlers(): void {
   registerRecorderHandlers()
   registerRunHandlers()
   registerBatchHandlers()
+  registerActivityHandlers()
   registerScoutHandlers()
   registerLibraryHandlers()
   registerSuggestHandlers()

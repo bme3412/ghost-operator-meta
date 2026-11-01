@@ -379,3 +379,78 @@ export async function generatePageIdeas(
   }
   return PageIdeaDraftsResponse.parse(parsed).ideas.slice(0, PAGE_IDEAS_MAX_RESULTS)
 }
+
+export const META_RANK_PROMPT = `You rank business-work opportunities for a small-business owner.
+Output JSON only, matching this shape:
+{"ranked": [{"id": string, "because": string}]}
+Rules: return every provided id exactly once, ordered by urgency and actionability (exceptions needing the owner and large covered batches first).
+Rewrite "because" in one short sentence citing only the precedent provided; never invent cases, quantities, or rules, and never propose executing anything yourself.`
+
+const OpportunityRankResponse = z.object({
+  ranked: z.array(z.object({ id: z.string().min(1), because: z.string().min(1) })).default([])
+})
+
+export interface OpportunityRankEntry {
+  id: string
+  because: string
+}
+
+/**
+ * Meta adapter for Now-feed ranking: reorder opportunities and rephrase
+ * their precedent lines. Throws on any failure — the caller keeps the
+ * deterministic order. The model never starts runs.
+ */
+export async function rankOpportunities(
+  opportunities: Array<{ id: string; title: string; because: string; state: string; caseIds: string[] }>,
+  env: MetaEnv = process.env
+): Promise<OpportunityRankEntry[]> {
+  const apiKey = env.MODEL_API_KEY
+  if (!apiKey) {
+    throw new Error('MODEL_API_KEY is not set; cannot rank opportunities with the Meta provider.')
+  }
+  const baseUrl = (env.META_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '')
+  const model = env.SPARK_MODEL ?? DEFAULT_MODEL
+  const userMessage = opportunities
+    .map(
+      (o, index) =>
+        `${index + 1}. id=${o.id} state=${o.state} cases=${o.caseIds.join(',')} title="${o.title}" because="${o.because}"`
+    )
+    .join('\n')
+
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: META_RANK_PROMPT },
+          { role: 'user', content: userMessage }
+        ]
+      }),
+      signal: AbortSignal.timeout(90_000)
+    })
+  } catch (error) {
+    throw new Error(`Meta ranking request failed: ${(error as Error).message}`)
+  }
+  if (!response.ok) {
+    throw new Error(`Meta ranking endpoint returned HTTP ${response.status}.`)
+  }
+  const body = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const content = body.choices?.[0]?.message?.content
+  if (!content) {
+    throw new Error('Meta ranking endpoint returned no message content.')
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    throw new Error('Meta ranking endpoint returned content that is not JSON.')
+  }
+  return OpportunityRankResponse.parse(parsed).ranked
+}

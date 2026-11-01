@@ -86,6 +86,33 @@ environment variables always win over that file. Packaged builds read
 | `TRANSCRIBE_API_KEY` | — | Transcription key; without it the mic returns a canned transcript |
 | `TRANSCRIBE_MODEL` | `whisper-1` | Transcription model id |
 
+## Demo script: the Now feed (3 minutes)
+
+Home is a Now feed: Ghost watches Saltbreak's business events, clusters
+repeatable work, and offers the next safe action. Preconditions:
+`pnpm dev:saltbreak` running and `pnpm db:reset` done, so the after-hours
+pile (T-201 to T-208) is open.
+
+1. **0:00 — The pile, noticed.** Open Ghost. Under **Ready to run**: "3
+   damaged-shipment tickets" and "3 wrong-size tickets", each with a
+   "Because…" line citing Maya's rules. Under **Needs you**: the T-207 bank
+   chargeback — no rule covers it.
+2. **0:40 — Preview before anything runs.** Click **Preview** on the damaged
+   cluster: exactly T-203, T-205, T-208 and the skill that will handle them.
+3. **1:10 — Approve one batch.** **Run on 3**. Ghost refunds each case,
+   quoting the rule it used; the batch summary counts down on screen.
+4. **2:00 — The feed updates itself.** Back on Home, the damaged cluster is
+   gone, **Recent activity** shows "batch finished — 3 resolved", and T-207
+   is still waiting under Needs you. Nothing ran without a preview.
+5. **2:30 — Close on the map.** Library → Task map: the same skill as one
+   plain-language spine, suggestions underneath — activity, learned rules,
+   automation, and evidence as one system.
+
+Dismissing a cluster remembers the choice: it stays gone until a new case
+joins it. With `MODEL_API_KEY` set, Muse re-ranks and rephrases the feed;
+the clusters, matches, and actions are always computed deterministically,
+and fixture mode shows the identical feed offline.
+
 ## Demo script: the Vacation
 
 Maya teaches Ghost one support ticket on Thursday, says her rules out loud,

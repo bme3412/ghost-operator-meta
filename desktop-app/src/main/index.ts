@@ -1,7 +1,10 @@
 import { app, BrowserWindow, screen } from 'electron'
+import { refreshActivity } from './activity/service'
 import { startAwayServer, stopAwayServer } from './away'
 import { loadLocalEnv } from './env'
 import { registerIpcHandlers } from './ipc'
+import { sendToRoles } from './ipc/broadcast'
+import { EVENTS } from './ipc/channels'
 import { getScoutStatus, getSiteMap, startScan } from './scout/service'
 import { seedStarterSkills } from './skills'
 import { getTargetStatus } from './target'
@@ -57,6 +60,15 @@ void app.whenReady().then(() => {
   createAllWindows()
   startAwayServer()
   void scanSiteOnFirstLaunch()
+  // Now feed: ingest Saltbreak events in the background; the panel refetches
+  // when new events land (it also refetches on its own interval on Home).
+  const pollActivity = (): void => {
+    void refreshActivity().then((added) => {
+      if (added > 0) sendToRoles(['panel'], EVENTS.activityChanged)
+    })
+  }
+  pollActivity()
+  setInterval(pollActivity, 15_000)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

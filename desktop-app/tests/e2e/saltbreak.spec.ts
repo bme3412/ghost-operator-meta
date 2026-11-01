@@ -94,10 +94,13 @@ test('target-down launch shows the offline page and panel Home', async () => {
       'pnpm dev:saltbreak'
     )
     // Starters seed by site profile, not reachability, so they are listed
-    // even while the target is down (the empty-state hint stays hidden).
-    await expect(panel.locator('[data-semid="home-skills"]')).toContainText(
-      'Reconcile payout PO-1043 in Books'
+    // in the Library even while the target is down.
+    await panel.getByTestId('panel-library').click()
+    await panel.getByTestId('library-tab-skills').click()
+    await expect(panel.locator('[data-semid="skill-heading"]')).toContainText(
+      'Handle after-hours support tickets'
     )
+    await panel.getByTestId('panel-back').click()
 
     // Teach and Settings stay reachable while the target is down.
     await panel.getByTestId('panel-teach').click()
@@ -147,15 +150,21 @@ test('teach, publish, and assisted reuse on new tickets', async () => {
     await panel.getByTestId('review-save-publish').click()
     await expect(panel.getByTestId('run-skill')).toBeVisible()
 
-    // 9. Home lists the published skill with a Run button (alongside the
-    // pre-seeded starters, so scope the button to the taught skill's row).
+    // 9. The Library lists the published skill; its Run button opens run
+    // setup with the taught skill selected.
     await panel.getByTestId('panel-back').click()
-    const card = panel.locator('[data-semid="home-skills"]')
-    await expect(card).toContainText('Resolve a support ticket')
-    await card
-      .locator('li', { hasText: 'Resolve a support ticket' })
-      .getByRole('button', { name: 'Run' })
+    await panel.getByTestId('panel-library').click()
+    await panel.getByTestId('library-tab-skills').click()
+    await panel
+      .locator('[role="listbox"][aria-label="Skills"] button', {
+        hasText: 'Resolve a support ticket'
+      })
+      .first()
       .click()
+    await expect(panel.locator('[data-semid="skill-heading"]')).toContainText(
+      'Resolve a support ticket'
+    )
+    await panel.locator('[data-semid="skill-run"]').click()
     await expect(panel.getByTestId('run-skill')).toBeVisible()
 
     // 10-11. Reuse the skill on a different ticket with an assisted run. The
@@ -252,8 +261,10 @@ test('starter task opens run setup for the seeded skill', async () => {
   try {
     const target = await targetWindow(app)
     const panel = await windowByTitle(app, 'Ghost Operator')
-    // Owner cards render once the panel sees a /staff/* page.
+    // Starter cards live in Teach now (Home is the Now feed). Owner cards
+    // render once the panel sees a /staff/* page.
     await target.goto(`${TARGET_URL}/staff/inbox`)
+    await panel.getByTestId('panel-teach').click()
     const starter = panel.locator('[data-semid="starter-teach-reconcile-payout"]')
     await expect(starter).toBeVisible({ timeout: 30_000 })
     await starter.click()
@@ -284,8 +295,9 @@ async function openStarter(
   const target = await targetWindow(app)
   const panel = await windowByTitle(app, 'Ghost Operator')
   // Starter cards are area-first: land the target in the card's area so the
-  // panel's page push deterministically shows it.
+  // panel's page push deterministically shows it. They live in Teach now.
   await target.goto(`${TARGET_URL}${startPath}`)
+  await panel.getByTestId('panel-teach').click()
   const starter = panel.locator(`[data-semid="starter-teach-${starterId}"]`)
   await expect(starter).toBeVisible({ timeout: 30_000 })
   await starter.click()
@@ -492,6 +504,55 @@ test('recorded clicks carry selector candidates', async () => {
         { timeout: 30_000 }
       )
       .toEqual(expect.arrayContaining([expect.any(String)]))
+  } finally {
+    await app.close()
+  }
+})
+
+test('now feed clusters new damage reports and runs the covered batch', async () => {
+  test.setTimeout(420_000)
+  const app = await launch()
+  try {
+    const target = await targetWindow(app)
+    const panel = await windowByTitle(app, 'Ghost Operator')
+
+    // Two new damaged-item reports arrive through the storefront help form.
+    // (Runs after the Vacation: the pile itself is already worked, and the
+    // refunds there are the precedent the feed cites.)
+    for (const message of ['Screen cracked in the mail', 'Arrived broken in the box']) {
+      await target.goto(`${TARGET_URL}/order/SB-2101`)
+      await target.locator('[data-semid="order-help-reason"]').selectOption('Damaged item')
+      await target.locator('[data-semid="order-help-message"]').fill(message)
+      await target.locator('[data-semid="order-help-submit"]').click()
+      await expect(target.locator('[data-semid="order-help-confirm"]')).toBeVisible({
+        timeout: 30_000
+      })
+    }
+
+    // The feed clusters them as Ready, citing the earlier refunds.
+    const item = panel.locator('[data-semid^="feed-item-damaged:"]')
+    await expect(item).toBeVisible({ timeout: 60_000 })
+    await expect(item).toContainText('You resolved')
+    await item.locator('[data-semid^="feed-preview-btn-"]').click()
+    const preview = await item.locator('p[data-semid^="feed-preview-"]').textContent()
+    const caseIds = [...(preview ?? '').matchAll(/T-\d+/g)].map((match) => match[0])
+    expect(caseIds).toHaveLength(2)
+
+    // Approve the batch and watch it resolve both tickets.
+    await item.locator('[data-semid^="feed-run-"]').click()
+    await expect(panel.locator('[data-semid="batch-headline"]')).toHaveText(
+      'Ghost resolved 2 tickets. Nothing needs you.',
+      { timeout: 360_000 }
+    )
+
+    // Back home: the cluster is gone and the outcome is in Recent activity.
+    await panel.getByTestId('panel-back').click()
+    await expect(panel.locator('[data-semid^="feed-item-damaged:"]')).toHaveCount(0, {
+      timeout: 60_000
+    })
+    await expect(panel.locator('[data-semid="feed-recent"]')).toContainText('batch finished', {
+      timeout: 60_000
+    })
   } finally {
     await app.close()
   }

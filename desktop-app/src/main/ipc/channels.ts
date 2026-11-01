@@ -45,6 +45,9 @@ export const CHANNELS = {
   batchesGet: 'batches:get',
   batchesCancel: 'batches:cancel',
   batchesAwayUrl: 'batches:away-url',
+  activityGetFeed: 'activity:get-feed',
+  activityDismiss: 'activity:dismiss',
+  activityAct: 'activity:act',
   suggestList: 'suggest:list',
   suggestDismiss: 'suggest:dismiss',
   suggestAccept: 'suggest:accept',
@@ -64,6 +67,7 @@ export const EVENTS = {
   runProgress: 'ghost:run-progress',
   libraryChanged: 'ghost:library-changed',
   scoutProgress: 'ghost:scout-progress',
+  activityChanged: 'ghost:activity-changed',
   targetPage: 'ghost:target-page'
 } as const
 

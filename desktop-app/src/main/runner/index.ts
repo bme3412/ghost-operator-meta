@@ -24,7 +24,14 @@ import {
   selectorForStep,
   type DomAct
 } from './operations'
-import { SELECTOR_READY_TIMEOUT_MS, waitForAnySelector, waitForStepChecks } from './wait'
+import {
+  CHECK_WAIT_POLL_MS,
+  CHECK_WAIT_TIMEOUT_MS,
+  SELECTOR_READY_TIMEOUT_MS,
+  defaultSleep,
+  waitForAnySelector,
+  waitForStepChecks
+} from './wait'
 
 /** Batch position of a run started from "Run on many". */
 export interface RunBatchRef {
@@ -177,17 +184,33 @@ export function createRunner(deps: RunnerDeps): {
 
   async function evaluateStepChecks(run: ActiveRun, step: SkillStep): Promise<CheckResult[]> {
     // Wait-for-condition replaces blind settling: give the page a bounded
-    // window to render the check targets after the step's action, then
-    // evaluate honestly whether or not they appeared.
+    // window to render the check targets after the step's action, then keep
+    // re-evaluating within the same budget — a server action can leave the
+    // target element present but stale ("open") for a beat after the click
+    // that changes it. A timeout still degrades into an honest failure.
+    const timeoutMs = deps.checkWait?.timeoutMs ?? CHECK_WAIT_TIMEOUT_MS
+    const pollMs = deps.checkWait?.pollMs ?? CHECK_WAIT_POLL_MS
+    const sleep = deps.sleep ?? defaultSleep
     await waitForStepChecks(step.checks, run.record.inputs, deps.domQuery, {
-      timeoutMs: deps.checkWait?.timeoutMs,
-      pollMs: deps.checkWait?.pollMs,
-      sleep: deps.sleep
+      timeoutMs,
+      pollMs,
+      sleep
     })
-    const nowMs = deps.now()
-    const results: CheckResult[] = []
-    for (const ref of step.checks) {
-      results.push(await evaluateCheck(ref, { inputs: run.record.inputs, nowMs, dom: deps.domQuery }))
+    const evaluateAll = async (): Promise<CheckResult[]> => {
+      const results: CheckResult[] = []
+      for (const ref of step.checks) {
+        results.push(
+          await evaluateCheck(ref, { inputs: run.record.inputs, nowMs: deps.now(), dom: deps.domQuery })
+        )
+      }
+      return results
+    }
+    let results = await evaluateAll()
+    let waited = 0
+    while (results.some((c) => !c.passed) && waited < timeoutMs) {
+      await sleep(pollMs)
+      waited += pollMs
+      results = await evaluateAll()
     }
     return results
   }

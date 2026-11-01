@@ -3,9 +3,8 @@ import type { RecorderStatePush, RunProgress, SkillSummary } from '../../../../s
 import type { TargetStatus } from '../../../../shared/target'
 import { Button } from '../../components/Button'
 import { friendlyError } from '../../lib/errors'
-import { publishedSkillForStarter } from '../../lib/starters'
 import { TERMINAL_RUN, type OnNav } from '../nav'
-import { PageIdeas } from '../PageIdeas'
+import { NowFeed } from '../NowFeed'
 
 const SETUP_COMMANDS = ['cd web-app', 'pnpm install', 'pnpm db:seed', 'pnpm dev:saltbreak'].join('\n')
 
@@ -175,40 +174,7 @@ export function HomeView({
         </p>
       )}
 
-      {skills.length > 0 && (
-        <section className="card" aria-label="Skills">
-          <h2>Your skills</h2>
-          <ul className="skill-cards" data-semid="home-skills">
-            {skills.map((row) => (
-              <li key={row.id} className="skill-card" data-semid={`home-skill-${row.id}`}>
-                <div>
-                  <strong>{row.name}</strong>
-                </div>
-                <Button
-                  variant="primary"
-                  data-semid={`home-run-${row.id}`}
-                  onClick={() => onNav({ view: 'runSetup', skillId: row.id })}
-                >
-                  Run
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <PageIdeas
-        onTeach={(idea) => onNav({ view: 'teach', goal: idea.title, example: idea.exampleInput })}
-        onStarter={(task) => {
-          // Already published (seeded or taught): run it; don't teach a copy.
-          const existing = publishedSkillForStarter(skills, task)
-          if (existing) {
-            onNav({ view: 'runSetup', skillId: existing.id, demonstrated: task.exampleInputs })
-          } else {
-            onNav({ view: 'review', scriptedId: task.id, scriptName: task.title })
-          }
-        }}
-      />
+      <NowFeed onNav={onNav} />
     </div>
   )
 }
