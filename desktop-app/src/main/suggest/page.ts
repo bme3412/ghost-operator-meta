@@ -235,7 +235,7 @@ function detailIdeas(page: PageSummary): IdeaDraft[] {
     if (gate) {
       ideas.push({
         title: `Complete "${gate}" with human help`,
-        why: `"${gate}" needs credentials only a person has — Ghost can drive to it, you complete the step.`,
+        why: `"${gate}" needs credentials only a person has — Muse for SMB can drive to it, you complete the step.`,
         cites: [gate],
         confidence: 'low'
       })

@@ -290,7 +290,7 @@ export function createRunner(deps: RunnerDeps): {
     const choice = allowed ? decision.choice : ESCALATE
     const reason = allowed
       ? decision.reason
-      : `Ghost suggested "${decision.choice}", which isn't one of your options, so it left this for you.`
+      : `Muse for SMB suggested "${decision.choice}", which isn't one of your options, so it left this for you.`
     run.record.decisions.push({
       stepId: step.id,
       choice,

@@ -340,7 +340,7 @@ function insertDecision(
   clickEvidence.step = {
     ...rest,
     goal: `Carry out the decision (${options.join(' or ')}).`,
-    why: 'Ghost clicks whichever choice your rules picked for this case.',
+    why: 'Muse for SMB clicks whichever choice your rules picked for this case.',
     bindings: { ...click.bindings, selector: decidedSelector }
   }
   steps.splice(index, 0, { step: decide, afterSeq: clickEvidence.afterSeq })
@@ -372,7 +372,7 @@ function insertDecision(
       rules.some(isEscalationRule) || rules.length === 0
         ? []
         : [
-            'Your rules never say what to do with other cases. Ghost will hand back anything they do not cover.'
+            'Your rules never say what to do with other cases. Muse for SMB will hand back anything they do not cover.'
           ]
   }
 }

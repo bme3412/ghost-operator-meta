@@ -151,7 +151,7 @@ export function decideFixture(request: DecideRequest): Decision {
     return {
       choice: ESCALATE,
       rule: null,
-      reason: `The case mentions "${flag}". None of your rules cover that, so Ghost left it for you.`
+      reason: `The case mentions "${flag}". None of your rules cover that, so Muse for SMB left it for you.`
     }
   }
   const parsed = request.rules
@@ -163,14 +163,14 @@ export function decideFixture(request: DecideRequest): Decision {
     return {
       choice: ESCALATE,
       rule: null,
-      reason: "None of your rules match this case, so Ghost didn't guess."
+      reason: "None of your rules match this case, so Muse for SMB didn't guess."
     }
   }
   if (choices.size > 1) {
     return {
       choice: ESCALATE,
       rule: null,
-      reason: `More than one of your rules fits (${[...choices].join(' and ')}), so Ghost left the call to you.`
+      reason: `More than one of your rules fits (${[...choices].join(' and ')}), so Muse for SMB left the call to you.`
     }
   }
   const hit = hits[0] as ParsedRule
@@ -270,7 +270,7 @@ export function normalizeDecision(
     return {
       choice: ESCALATE,
       rule: null,
-      reason: `Ghost leaned toward "${normalized}" but couldn't point to one of your rules, so it left this for you.`
+      reason: `Muse for SMB leaned toward "${normalized}" but couldn't point to one of your rules, so it left this for you.`
     }
   }
   return { choice: normalized, rule: quoted, reason }
