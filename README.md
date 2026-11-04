@@ -8,9 +8,7 @@ website, and brings unfamiliar decisions back to the owner.
 > Notice work → review the proposed action and rule → approve → follow
 > progress → see verified results.
 
-The demo business is **Saltbreak Surf Co.**, a fictional surf shop. The
-product interface says **Muse**; "Muse for SMB" is the pitch name used in
-docs like this one.
+The demo business is **Saltbreak Surf Co.**, a fictional surf shop. 
 
 ## The two projects
 
@@ -19,12 +17,12 @@ and lockfile — run commands from inside the project directory):
 
 | Project | What it is |
 | - | - |
-| [`desktop-app/`](desktop-app/README.md) | **Muse** — the Electron product. A Saltbreak website window plus one docked Muse panel (~420px). It learns workflows by watching demonstrations, then runs them on new cases. |
-| [`web-app/`](web-app/README.md) | **Saltbreak Surf Co.** (the customer system Muse operates) plus **Workflow Atlas**, the original product surface. Saltbreak never imports Muse code; Muse operates it only through its real UI and a read-only activity connector. |
+| [`desktop-app/`](desktop-app/README.md) | **Muse for SMB** — the Electron product. A Saltbreak website window plus one docked Muse panel (~420px). It learns workflows by watching demonstrations, then runs them on new cases. |
+| [`web-app/`](web-app/README.md) | **Saltbreak Surf Co.** (the customer system Muse operates)
 
 ## Quickstart
 
-Muse drives Saltbreak through its real UI, so both run together:
+Muse for SMB drives Saltbreak through its real UI, so both run together:
 
 ```sh
 # Terminal 1: Saltbreak (the shop)
