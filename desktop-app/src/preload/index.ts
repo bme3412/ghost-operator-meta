@@ -55,6 +55,8 @@ const api = {
     setUrl: (url: string): Promise<TargetInfo> => ipcRenderer.invoke('target:set-url', { url }),
     getStatus: (): Promise<TargetStatus> => ipcRenderer.invoke('target:get-status'),
     show: (): Promise<void> => ipcRenderer.invoke('target:show'),
+    openCase: (ticketId: string): Promise<void> =>
+      ipcRenderer.invoke('target:open-case', { ticketId }),
     onPageChanged: (listener: (page: TargetPagePush) => void): (() => void) =>
       onPayload<TargetPagePush>('ghost:target-page', listener)
   },

@@ -2,6 +2,7 @@ import {
   ActivityResponse,
   type ActivityFeed,
   type ActivityItem,
+  type Opportunity,
   type SaltbreakEvent,
   type StoredActivityEvent
 } from '../../shared/schemas'
@@ -20,6 +21,9 @@ import {
 
 const MAX_STORED_EVENTS = 300
 
+/** Last Muse-ranked composition; unchanged feeds reuse it instantly. */
+let lastRanked: { key: string; needsYou: Opportunity[]; ready: Opportunity[] } | null = null
+
 /** Test seam: replaces global fetch for the activity connector. */
 let fetcher: typeof fetch = (...args) => fetch(...args)
 export function setActivityFetcher(next: typeof fetch): void {
@@ -33,6 +37,8 @@ function toStored(event: SaltbreakEvent): StoredActivityEvent {
     entity: event.entity,
     entityId: event.entityId,
     subject: event.ticket?.subject ?? (typeof event.data.subject === 'string' ? event.data.subject : undefined),
+    customer: event.ticket?.customer,
+    amountCents: event.ticket?.amountCents,
     status:
       event.ticket?.status ??
       (event.type === 'ticket_status' && typeof event.data.to === 'string' ? event.data.to : undefined),
@@ -78,6 +84,7 @@ export function skillCoverage(): SkillCoverage[] {
     const record = getActiveVersion(summary.id)
     if (!record) continue
     const rulesByCategory: Partial<Record<TicketCategory, string>> = {}
+    const actionsByCategory: Partial<Record<TicketCategory, string>> = {}
     for (const step of record.recipe.steps) {
       if (step.kind !== 'decide' || !step.rules) continue
       for (const rule of step.rules) {
@@ -86,11 +93,13 @@ export function skillCoverage(): SkillCoverage[] {
         const category = classifyTicketText(parsed.condition)
         if (category !== 'other' && rulesByCategory[category] === undefined) {
           rulesByCategory[category] = rule
+          actionsByCategory[category] =
+            parsed.choice.charAt(0).toUpperCase() + parsed.choice.slice(1)
         }
       }
     }
     if (Object.keys(rulesByCategory).length > 0) {
-      coverage.push({ skillId: summary.id, skillName: summary.name, rulesByCategory })
+      coverage.push({ skillId: summary.id, skillName: summary.name, rulesByCategory, actionsByCategory })
     }
   }
   return coverage
@@ -125,7 +134,7 @@ function ghostRecentItems(): ActivityItem[] {
 }
 
 /**
- * The deterministic Now feed. When a model key is configured, Muse for SMB may
+ * The deterministic Now feed. When a model key is configured, Muse may
  * re-rank and rephrase the opportunities; any failure keeps the
  * deterministic feed plus a warning. The model never starts runs.
  */
@@ -141,6 +150,10 @@ export async function getActivityFeed(): Promise<ActivityFeed> {
 
   let warning: string | null = null
   const all = [...needsYou, ...ready]
+  const compositionKey = all.map((o) => `${o.id}|${o.because}`).join(';;')
+  if (all.length > 0 && lastRanked?.key === compositionKey) {
+    return { needsYou: lastRanked.needsYou, ready: lastRanked.ready, recent, warning }
+  }
   if (all.length > 0 && process.env.MODEL_API_KEY) {
     try {
       const ranked = await rankOpportunities(all)
@@ -154,14 +167,16 @@ export async function getActivityFeed(): Promise<ActivityFeed> {
             return order.indexOf(a.id) - order.indexOf(b.id)
           })
       const rankedAll = apply(all).filter((o) => byId.has(o.id))
-      return {
+      const result = {
         needsYou: rankedAll.filter((o) => o.state !== 'ready'),
         ready: rankedAll.filter((o) => o.state === 'ready'),
         recent,
         warning
       }
-    } catch (error) {
-      warning = `AI ranking failed (${(error as Error).message}); showing the grounded order.`
+      lastRanked = { key: compositionKey, needsYou: result.needsYou, ready: result.ready }
+      return result
+    } catch {
+      warning = "Showing today's work in the order it was found."
     }
   }
   return { needsYou, ready, recent, warning }

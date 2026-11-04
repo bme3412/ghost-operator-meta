@@ -36,6 +36,7 @@ export function getBatchRunner(): ReturnType<typeof createBatchRunner> {
     singleton = createBatchRunner({
       now: () => Date.now(),
       getSkillName: (skillId) => getSkill(skillId)?.name ?? null,
+      getSkillVersion: (skillId) => getSkill(skillId)?.activeVersion ?? null,
       startRun: (request, options) => getRunner().startRun(request, options),
       waitForRunEnd,
       stopRun: (runId) => {

@@ -85,8 +85,8 @@ export function RunningView({
         )}
       </section>
       {progress.decisions.length > 0 && (
-        <section className="card" aria-label="Muse for SMB's decision">
-          <h2>Muse for SMB's decision</h2>
+        <section className="card" aria-label="Muse's decision">
+          <h2>Muse's decision</h2>
           <DecisionList decisions={progress.decisions} />
         </section>
       )}
@@ -138,7 +138,7 @@ export function RunningView({
                 data-semid="run-next"
                 onClick={() => run(() => window.ghost.runs.advance(progress.runId))}
               >
-                {current.kind === 'decide' ? 'Let Muse for SMB decide' : 'Done — next step'}
+                {current.kind === 'decide' ? 'Let Muse decide' : 'Done — next step'}
               </Button>
             )}
             {!progress.awaitingApproval && progress.status === 'paused' && (

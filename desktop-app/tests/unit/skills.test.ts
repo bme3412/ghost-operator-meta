@@ -82,6 +82,9 @@ describe('skills store', () => {
     })
     expect(second.versions.map((v) => v.version)).toEqual([1, 2])
     expect(getSkill(first.id)?.versions).toHaveLength(2)
+    // Updating never creates a second playbook.
+    expect(listSkills()).toHaveLength(1)
+    expect(second.id).toBe(first.id)
   })
 
   it('edits drafts but never published versions', () => {

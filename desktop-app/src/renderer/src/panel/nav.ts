@@ -8,6 +8,7 @@ export type PanelView =
   | 'result'
   | 'batch'
   | 'library'
+  | 'workItem'
   | 'settings'
 
 export type LibraryTab = 'skills' | 'runs' | 'recordings' | 'map'
@@ -31,6 +32,12 @@ export interface PanelNav {
   /** Default skill name for the curated review flow. */
   scriptName?: string
   libraryTab?: LibraryTab
+  /** Opportunity signature for the work-item detail view. */
+  opportunityId?: string
+  /** Filter Activity to this playbook (related activity). */
+  focusSkillId?: string
+  /** Revise this existing playbook instead of creating a new one. */
+  updateSkillId?: string
   /** Focused record inside a library tab (skill, run, or recording id). */
   focusId?: string
   /** Demonstrated input values, keyed by input name. */

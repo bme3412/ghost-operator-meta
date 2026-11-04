@@ -11,6 +11,7 @@ import type { RunBatchRef } from './index'
 export interface BatchDeps {
   now: () => number
   getSkillName: (skillId: string) => string | null
+  getSkillVersion?: (skillId: string) => number | null
   startRun: (request: StartRunRequest, options: { batch: RunBatchRef }) => RunProgress
   /** Resolves with the persisted record once the run reaches a terminal state. */
   waitForRunEnd: (runId: string) => Promise<RunRecord | null>
@@ -37,16 +38,21 @@ export function summarizeBatch(batch: BatchRecord): BatchSummary {
   }
 }
 
-/** "Muse for SMB resolved 6 tickets. 1 needs your judgment." */
+/** "Muse resolved 6 tickets. 1 needs your judgment." */
 export function batchHeadline(batch: BatchRecord): string {
   const { handled, escalated, failed } = summarizeBatch(batch)
   const noun = batch.inputKey === 'ticketId' ? 'ticket' : 'case'
   const plural = (n: number): string => `${n} ${noun}${n === 1 ? '' : 's'}`
-  const needsYou = escalated.length + failed.length
-  const lead = `Muse for SMB resolved ${plural(handled.length)}.`
-  return needsYou === 0
-    ? `${lead} Nothing needs your judgment.`
-    : `${lead} ${needsYou} need${needsYou === 1 ? 's' : ''} your judgment.`
+  const lead = `Muse resolved ${plural(handled.length)}.`
+  const parts = [lead]
+  if (escalated.length > 0) {
+    parts.push(`${escalated.length} need${escalated.length === 1 ? 's' : ''} your judgment.`)
+  }
+  if (failed.length > 0) {
+    parts.push(`${failed.length} didn't finish.`)
+  }
+  if (escalated.length === 0 && failed.length === 0) parts.push('Nothing needs your judgment.')
+  return parts.join(' ')
 }
 
 function itemFromRecord(item: BatchItem, record: RunRecord | null): BatchItem {
@@ -152,10 +158,12 @@ export function createBatchRunner(deps: BatchDeps): {
       counter += 1
       const startedAtMs = deps.now()
       cancelled = false
+      const skillVersion = deps.getSkillVersion?.(request.skillId) ?? null
       const batch = save({
         id: `batch-${startedAtMs}-${counter}`,
         skillId: request.skillId,
         skillName,
+        ...(skillVersion !== null ? { skillVersion } : {}),
         inputKey: request.inputKey,
         sharedInputs: request.sharedInputs,
         items: caseIds.map((caseId) => ({ caseId, status: 'pending' })),

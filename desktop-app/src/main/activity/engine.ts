@@ -33,6 +33,8 @@ export interface SkillCoverage {
   skillName: string
   /** Category → the owner's rule text covering it. */
   rulesByCategory: Partial<Record<TicketCategory, string>>
+  /** Category → proposed action ("Refund" / "Exchange") from the rule outcome. */
+  actionsByCategory?: Partial<Record<TicketCategory, string>>
 }
 
 function isOpenTicketEvent(event: StoredActivityEvent, closed: Set<string>): boolean {
@@ -70,21 +72,22 @@ export function buildOpportunities(
     feedback.filter((f) => f.action === 'dismissed').map((f) => f.signature)
   )
   const closed = closedTicketIds(events)
-  const groups = new Map<TicketCategory, string[]>()
+  const groups = new Map<TicketCategory, StoredActivityEvent[]>()
   for (const event of events) {
     if (!isOpenTicketEvent(event, closed)) continue
     const category = classifyTicketText(`${event.subject ?? ''}`)
-    const ids = groups.get(category) ?? []
-    if (!ids.includes(event.entityId)) ids.push(event.entityId)
-    groups.set(category, ids)
+    const list = groups.get(category) ?? []
+    if (!list.some((entry) => entry.entityId === event.entityId)) list.push(event)
+    groups.set(category, list)
   }
 
   const resolved = events.filter(
     (event) => event.entity === 'ticket' && event.type === 'ticket_resolved'
   )
   const opportunities: Opportunity[] = []
-  for (const [category, caseIds] of groups) {
-    const sorted = [...caseIds].sort()
+  for (const [category, caseEvents] of groups) {
+    const sorted = caseEvents.map((event) => event.entityId).sort()
+    const byId = new Map(caseEvents.map((event) => [event.entityId, event]))
     const id = `${category}:${sorted.join(',')}`
     if (dismissed.has(id)) continue
     const skill = coverage.find((entry) => entry.rulesByCategory[category] !== undefined)
@@ -110,6 +113,19 @@ export function buildOpportunities(
       because,
       category,
       caseIds: sorted,
+      cases: sorted.map((caseId) => {
+        const event = byId.get(caseId)
+        return {
+          id: caseId,
+          customer: event?.customer,
+          summary: event?.subject,
+          amountCents: event?.amountCents
+        }
+      }),
+      ...(rule ? { ruleText: rule } : {}),
+      ...(skill?.actionsByCategory?.[category]
+        ? { actionLabel: skill.actionsByCategory[category] }
+        : {}),
       ...(skill ? { skillId: skill.skillId, skillName: skill.skillName } : {})
     })
   }

@@ -5,6 +5,7 @@ import '../styles.css'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { friendlyError } from '../lib/errors'
 import { BatchView } from './views/BatchView'
+import { WorkItemView } from './views/WorkItemView'
 import { HomeView } from './views/HomeView'
 import { LibraryView } from './views/LibraryView'
 import { RecordingView } from './views/RecordingView'
@@ -17,16 +18,24 @@ import { TeachView } from './views/TeachView'
 import { TERMINAL_RUN, type PanelNav, type PanelView } from './nav'
 
 const TITLES: Record<PanelView, string> = {
-  home: 'Muse for SMB',
-  teach: 'Teach Muse for SMB a task',
-  recording: 'Muse for SMB is watching',
-  review: 'What Muse for SMB learned',
+  home: 'Muse',
+  teach: 'Teach Muse',
+  recording: 'Muse is watching',
+  review: 'What Muse learned',
   runSetup: 'Run a playbook',
-  running: 'Muse for SMB is working',
+  running: 'Muse is working',
   result: 'Work report',
   batch: 'Work report',
-  library: 'My playbook',
+  library: 'Playbook',
+  workItem: 'Review work',
   settings: 'Settings'
+}
+
+/** Heading for a nav destination (used by the contextual back label). */
+function titleFor(nav: PanelNav): string {
+  if (nav.view === 'home') return 'Today'
+  if (nav.view === 'library') return nav.libraryTab === 'runs' ? 'Activity' : 'Playbook'
+  return TITLES[nav.view]
 }
 
 /** Which primary tab a view belongs to. */
@@ -41,6 +50,19 @@ function tabFor(nav: PanelNav): 'today' | 'playbook' | 'activity' {
 
 function PanelApp(): React.JSX.Element {
   const [nav, setNav] = useState<PanelNav>({ view: 'home' })
+  const [connected, setConnected] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const check = (): void => {
+      window.ghost.target
+        .getStatus()
+        .then((status) => setConnected(status.reachable))
+        .catch(() => setConnected(false))
+    }
+    check()
+    const timer = window.setInterval(check, 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const [recorder, setRecorder] = useState<RecorderStatePush | null>(null)
   const [progress, setProgress] = useState<RunProgress | null>(null)
   const [bridgeError, setBridgeError] = useState<string | null>(null)
@@ -115,40 +137,35 @@ function PanelApp(): React.JSX.Element {
     }
   }, [progress])
 
-  useEffect(() => {
-    window.ghost.panel
-      .setLayout(nav.view === 'library' ? 'expanded' : 'docked')
-      .catch(() => undefined)
-  }, [nav.view])
-
-  const onNav = (next: PanelNav): void => setNav(next)
+  // The panel never auto-expands: Playbook and Activity live at docked
+  // width like everything else.
+  const [history, setHistory] = useState<PanelNav[]>([])
+  const onNav = (next: PanelNav): void => {
+    // Capture the view being left from this render's state, not the ref:
+    // updater functions may run after navRef has already moved on.
+    const leaving = nav
+    setHistory((stack) => [...stack.slice(-9), leaving])
+    setNav(next)
+  }
+  const backTarget: PanelNav = history[history.length - 1] ?? { view: 'home' }
+  const goBack = (): void => {
+    setHistory((stack) => stack.slice(0, -1))
+    setNav(backTarget)
+  }
   const [overflowOpen, setOverflowOpen] = useState(false)
   const activeTab = tabFor(nav)
 
   return (
     <main className="panel-root">
       <header className="panel-header">
-        {nav.view !== 'home' ? (
-          <button
-            type="button"
-            className="btn-link"
-            data-testid="panel-back"
-            data-semid="panel-back"
-            onClick={() => setNav({ view: 'home' })}
-          >
-            ‹ Today
-          </button>
-        ) : (
-          <span className="panel-brand" data-testid="panel-title" data-semid="panel-title">
-            Muse for SMB
-            <span className="panel-subbrand">Saltbreak Surf Co.</span>
+        <span className="panel-brand" data-testid="panel-title" data-semid="panel-title">
+          Muse
+          <span className="panel-subbrand" role="status" data-semid="home-target-status">
+            Saltbreak Surf Co. ·{' '}
+            <span className={`dot${connected ? ' dot-ok' : ''}`} aria-hidden="true" />
+            <span>{connected ? 'Connected' : 'Saltbreak unreachable'}</span>
           </span>
-        )}
-        {nav.view !== 'home' && (
-          <span className="panel-brand" data-testid="panel-title" data-semid="panel-title">
-            {TITLES[nav.view]}
-          </span>
-        )}
+        </span>
         <span className="panel-header-spacer" />
         <span className="overflow-wrap">
           <button
@@ -169,7 +186,7 @@ function PanelApp(): React.JSX.Element {
                 data-semid="panel-settings"
                 onClick={() => {
                   setOverflowOpen(false)
-                  setNav({ view: 'settings' })
+                  onNav({ view: 'settings' })
                 }}
               >
                 Settings
@@ -189,12 +206,12 @@ function PanelApp(): React.JSX.Element {
           )}
         </span>
       </header>
-      <nav className="panel-tabs" aria-label="Muse for SMB sections">
+      <nav className="panel-tabs" aria-label="Muse sections">
         <button
           type="button"
           className={`panel-tab${activeTab === 'today' ? ' selected' : ''}`}
           data-semid="nav-today"
-          onClick={() => setNav({ view: 'home' })}
+          onClick={() => onNav({ view: 'home' })}
         >
           Today
         </button>
@@ -203,29 +220,48 @@ function PanelApp(): React.JSX.Element {
           className={`panel-tab${activeTab === 'playbook' ? ' selected' : ''}`}
           data-testid="panel-library"
           data-semid="nav-playbook"
-          onClick={() => setNav({ view: 'library', libraryTab: 'skills' })}
+          onClick={() => onNav({ view: 'library', libraryTab: 'skills' })}
         >
-          My playbook
+          Playbook
         </button>
         <button
           type="button"
           className={`panel-tab${activeTab === 'activity' ? ' selected' : ''}`}
           data-semid="nav-activity"
-          onClick={() => setNav({ view: 'library', libraryTab: 'runs' })}
+          onClick={() => onNav({ view: 'library', libraryTab: 'runs' })}
         >
           Activity
         </button>
       </nav>
       {bridgeError !== null && (
         <p className="alert-error" role="alert">
-          Could not reach Muse for SMB: {bridgeError}
+          Could not reach Muse: {bridgeError}
         </p>
       )}
       <div className="panel-body">
+        {nav.view !== 'home' && (
+          <div className="view-head">
+            <button
+              type="button"
+              className="btn-link"
+              data-testid="panel-back"
+              data-semid="panel-back"
+              onClick={goBack}
+            >
+              ‹ {titleFor(backTarget)}
+            </button>
+            <h1 className="view-title">{titleFor(nav)}</h1>
+          </div>
+        )}
         <ErrorBoundary>
         {nav.view === 'home' && <HomeView onNav={onNav} recorder={recorder} progress={progress} />}
         {nav.view === 'teach' && (
-          <TeachView onNav={onNav} initialGoal={nav.goal ?? ''} initialExample={nav.example ?? ''} />
+          <TeachView
+            onNav={onNav}
+            initialGoal={nav.goal ?? ''}
+            initialExample={nav.example ?? ''}
+            updateSkillId={nav.updateSkillId}
+          />
         )}
         {nav.view === 'recording' && <RecordingView push={recorder} />}
         {nav.view === 'review' &&
@@ -253,7 +289,15 @@ function PanelApp(): React.JSX.Element {
             <HomeView onNav={onNav} recorder={recorder} progress={progress} />
           ))}
         {nav.view === 'library' && (
-          <LibraryView tab={nav.libraryTab ?? 'skills'} focusId={nav.focusId} onNav={onNav} />
+          <LibraryView
+            tab={nav.libraryTab ?? 'skills'}
+            focusId={nav.focusId}
+            focusSkillId={nav.focusSkillId}
+            onNav={onNav}
+          />
+        )}
+        {nav.view === 'workItem' && nav.opportunityId && (
+          <WorkItemView onNav={onNav} opportunityId={nav.opportunityId} />
         )}
         {nav.view === 'settings' && <SettingsView />}
         </ErrorBoundary>

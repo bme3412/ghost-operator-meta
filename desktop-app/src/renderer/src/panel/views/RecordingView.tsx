@@ -108,7 +108,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
   return (
     <div>
       <p className="stage-steps" aria-label="Teaching progress">
-        <span className="stage-current">1 · Show Muse for SMB</span>
+        <span className="stage-current">1 · Show Muse</span>
         <span aria-hidden="true">→</span>
         <span>2 · Check my understanding</span>
         <span aria-hidden="true">→</span>
@@ -127,7 +127,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
           Recording {targetName}
           {push?.goal ? ` — ${push.goal}` : ''}
         </p>
-        <p className="toolbar-hint">Muse for SMB is watching — do the task as usual, then Finish.</p>
+        <p className="toolbar-hint">Muse is watching — do the task as usual, then Finish.</p>
         <p className="toolbar-count" data-testid="recording-count">
           {eventCount} action{eventCount === 1 ? '' : 's'} captured
         </p>
@@ -176,7 +176,7 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
                   setNoteText((current) => (current.trim() ? `${current.trim()} ${text}` : text))
                   setMicNotice(
                     source === 'canned'
-                      ? 'No transcription key is set, so Muse for SMB filled in a sample rule. Edit it before saving.'
+                      ? 'No transcription key is set, so Muse filled in a sample rule. Edit it before saving.'
                       : 'Check the transcript, then save the note.'
                   )
                 }}
@@ -254,18 +254,19 @@ export function RecordingView({ push }: { push: RecorderStatePush | null }): Rea
             </Button>
           ) : (
             <span className="confirm-inline" role="alert">
-              Discard?
+              Discard this recording?
               <Button
+                variant="primary"
                 data-testid="recording-discard-yes"
                 onClick={() => {
                   setConfirmDiscard(false)
                   run(() => window.ghost.recorder.cancel())
                 }}
               >
-                Yes
+                Yes, discard
               </Button>
               <Button data-testid="recording-discard-no" onClick={() => setConfirmDiscard(false)}>
-                No
+                Keep recording
               </Button>
             </span>
           )}

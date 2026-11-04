@@ -7,10 +7,14 @@ import { runModeLabel, runStatusLabel, stepLabel } from '../lib/humanize'
 
 export function RunsSection({
   focusId,
-  onRunSkill
+  focusSkillId,
+  onRunSkill,
+  onOpenBatch
 }: {
   focusId: string | null
+  focusSkillId?: string
   onRunSkill?: () => void
+  onOpenBatch?: (batchId: string) => void
 }): React.JSX.Element {
   const [runs, setRuns] = useState<RunRecord[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(focusId)
@@ -79,10 +83,18 @@ export function RunsSection({
       .catch(() => undefined)
   }, [detailSkillId, detailSkillVersion])
 
+  const visibleRuns = focusSkillId ? runs.filter((run) => run.skillId === focusSkillId) : runs
   return (
-    <div className="library-split">
+    <div>
+      {focusSkillId && (
+        <p className="muted" data-semid="activity-filter">
+          Showing activity for {skillNames.get(focusSkillId) ?? 'this playbook'} only.
+        </p>
+      )}
+      <BatchList focusSkillId={focusSkillId} onOpenBatch={onOpenBatch} />
+      <div className="library-split">
       <div className="library-list" role="listbox" aria-label="Runs">
-        {runs.length === 0 && (
+        {visibleRuns.length === 0 && (
           <div>
             <p className="muted">No runs yet.</p>
             <Button data-semid="library-empty-run" onClick={() => onRunSkill?.()}>
@@ -90,7 +102,7 @@ export function RunsSection({
             </Button>
           </div>
         )}
-        {runs.map((run) => (
+        {visibleRuns.map((run) => (
           <button
             key={run.id}
             role="option"
@@ -104,7 +116,7 @@ export function RunsSection({
             </strong>
             <span className="muted">
               {runModeLabel(run.mode)} · {runStatusLabel(run.status)} ·{' '}
-              {new Date(run.startedAt).toLocaleString()}
+              {new Date(run.startedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
             </span>
           </button>
         ))}
@@ -125,8 +137,8 @@ export function RunsSection({
               </span>
             </h2>
             <p className="muted">
-              {detail.id} · started {new Date(detail.startedAt).toLocaleString()}
-              {detail.endedAt && ` · ended ${new Date(detail.endedAt).toLocaleString()}`}
+              {detail.id} · started {new Date(detail.startedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+              {detail.endedAt && ` · ended ${new Date(detail.endedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`}
             </p>
             {detail.error && (
               <p className="alert-error" role="alert">
@@ -184,6 +196,76 @@ export function RunsSection({
           </article>
         )}
       </div>
+      </div>
     </div>
+  )
+}
+
+/** Batch results in Activity: the same record the completion screen shows. */
+function BatchList({
+  focusSkillId,
+  onOpenBatch
+}: {
+  focusSkillId?: string
+  onOpenBatch?: (batchId: string) => void
+}): React.JSX.Element {
+  const [batches, setBatches] = useState<Array<{
+    id: string
+    skillId: string
+    skillName: string
+    status: string
+    startedAt: string
+    items: Array<{ status: string }>
+  }>>([])
+  useEffect(() => {
+    const load = (): void => {
+      window.ghost.batches
+        .list()
+        .then((rows) =>
+          setBatches(
+            rows.map((b) => ({
+              id: b.id,
+              skillId: b.skillId,
+              skillName: b.skillName,
+              status: b.status,
+              startedAt: b.startedAt,
+              items: b.items
+            }))
+          )
+        )
+        .catch(() => undefined)
+    }
+    load()
+    return window.ghost.library.onChanged(load)
+  }, [])
+  const visible = focusSkillId ? batches.filter((b) => b.skillId === focusSkillId) : batches
+  if (visible.length === 0) return <></>
+  return (
+    <section aria-label="Batch results">
+      <h3>Batch results</h3>
+      <ul className="skill-cards" data-semid="activity-batches">
+        {visible.map((batch) => {
+          const done = batch.items.filter((i) => i.status === 'succeeded').length
+          return (
+            <li key={batch.id} className="skill-card">
+              <div>
+                <strong>
+                  {done} completed · {batch.skillName}
+                </strong>
+                <div className="muted">
+                  {new Date(batch.startedAt).toLocaleString([], {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                  })}
+                </div>
+              </div>
+              <Button data-semid={`activity-batch-${batch.id}`} onClick={() => onOpenBatch?.(batch.id)}>
+                View results
+              </Button>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }

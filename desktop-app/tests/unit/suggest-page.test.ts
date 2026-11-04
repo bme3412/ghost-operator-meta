@@ -338,7 +338,7 @@ describe('getPageIdeas', () => {
       { env: cleanEnv({}) }
     )
     expect(result.source).toBe('heuristic')
-    expect(result.warning).toContain('MODEL_API_KEY is not set')
+    expect(result.warning).toContain('Showing ideas spotted on this page')
     expect(result.ideas.length).toBeGreaterThan(0)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -353,7 +353,7 @@ describe('getPageIdeas', () => {
       { env: cleanEnv({ MODEL_API_KEY: 'key' }) }
     )
     expect(result.source).toBe('heuristic')
-    expect(result.warning).toContain('AI ideas failed')
+    expect(result.warning).toContain('Showing ideas spotted on this page')
     expect(result.ideas).toEqual(minePage(ebayHome(), SITE))
   })
 

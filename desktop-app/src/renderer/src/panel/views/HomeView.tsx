@@ -114,22 +114,7 @@ export function HomeView({
         </p>
       )}
 
-      <div className="briefing-head">
-        <h1>
-          {new Date().getHours() < 12
-            ? 'Good morning'
-            : new Date().getHours() < 18
-              ? 'Good afternoon'
-              : 'Good evening'}
-          {' — here\u2019s Saltbreak today'}
-        </h1>
-      </div>
-      {reachable && status !== null ? (
-        <p role="status" data-semid="home-target-status">
-          <span className="dot dot-ok" aria-hidden="true" /> Connected to{' '}
-          <strong>{status.name}</strong>
-        </p>
-      ) : (
+      {!reachable && (
         <section className="card" aria-label="Target status">
           {status === null && statusError === null && <p className="muted">Checking target…</p>}
           {statusError !== null && (
@@ -138,13 +123,13 @@ export function HomeView({
             </p>
           )}
           {status !== null && (
-            <p role="status" data-semid="home-target-status">
-              <span className="dot" aria-hidden="true" /> <strong>{status.name}</strong> is
-              unreachable at <span className="muted">{status.url}</span>
+            <p role="status">
+              <strong>{status.name}</strong> is unreachable at{' '}
+              <span className="muted">{status.url}</span>
             </p>
           )}
           <div>
-            <p className="muted">Muse for SMB can&rsquo;t reach Saltbreak yet. Run Saltbreak alongside Muse for SMB:</p>
+            <p className="muted">Muse can&rsquo;t reach Saltbreak yet. Run Saltbreak alongside Muse:</p>
             <pre className="code-block" data-semid="home-setup-commands">
               {SETUP_COMMANDS}
             </pre>
@@ -168,23 +153,13 @@ export function HomeView({
         </section>
       )}
 
-      <div className="field">
-        <Button
-          variant="primary"
-          data-testid="panel-teach"
-          data-semid="teach"
-          onClick={() => onNav({ view: 'teach' })}
-        >
-          Teach Muse for SMB a task
-        </Button>
-      </div>
+      <NowFeed onNav={onNav} />
+
       {skillsLoaded && skills.length === 0 && (
         <p className="muted" data-semid="home-empty-hint">
-          Show Muse for SMB a task once, then reuse it whenever it comes up.
+          Show Muse a task once, then reuse it whenever it comes up.
         </p>
       )}
-
-      <NowFeed onNav={onNav} />
     </div>
   )
 }

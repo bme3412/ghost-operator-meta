@@ -13,7 +13,9 @@ export const SaltbreakEvent = z.object({
       subject: z.string(),
       body: z.string(),
       status: z.string(),
-      resolution: z.string().nullable().default(null)
+      resolution: z.string().nullable().default(null),
+      customer: z.string().optional(),
+      amountCents: z.number().optional()
     })
     .optional()
 })
@@ -42,6 +44,15 @@ export type OpportunityState = z.infer<typeof OpportunityState>
  * pattern (why it matters), and one safe action. Built deterministically;
  * the model may only re-rank and rephrase.
  */
+export const OpportunityCase = z.object({
+  id: z.string().min(1),
+  customer: z.string().optional(),
+  summary: z.string().optional(),
+  /** Refundable order total in cents, when the order is known. */
+  amountCents: z.number().optional()
+})
+export type OpportunityCase = z.infer<typeof OpportunityCase>
+
 export const Opportunity = z.object({
   /** Stable signature: category + sorted case ids. Feedback keys off this. */
   id: z.string().min(1),
@@ -51,6 +62,11 @@ export const Opportunity = z.object({
   because: z.string().min(1),
   category: z.string().min(1),
   caseIds: z.array(z.string()),
+  cases: z.array(OpportunityCase).default([]),
+  /** The owner's saved rule verbatim that covers this work, when one does. */
+  ruleText: z.string().optional(),
+  /** Proposed action in owner language: "Refund" or "Exchange". */
+  actionLabel: z.string().optional(),
   skillId: z.string().optional(),
   skillName: z.string().optional()
 })
@@ -78,6 +94,8 @@ export const StoredActivityEvent = z.object({
   entity: z.string(),
   entityId: z.string(),
   subject: z.string().optional(),
+  customer: z.string().optional(),
+  amountCents: z.number().optional(),
   status: z.string().optional(),
   resolution: z.string().nullable().optional(),
   at: z.string()

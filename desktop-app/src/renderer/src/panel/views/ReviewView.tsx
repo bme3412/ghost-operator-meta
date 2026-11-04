@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { takePendingUpdateSkillId } from '../../lib/pendingUpdate'
 import type { Proposal } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
 import { RulesCard } from '../../components/Decisions'
@@ -28,6 +29,7 @@ export function ReviewView({
   const [skillName, setSkillName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [updateSkillId] = useState<string | null>(() => takePendingUpdateSkillId())
   const startedFor = useRef<string | null>(null)
   // Stale completions (StrictMode re-invocation, recording change, manual
   // retry racing an earlier attempt) must never paint another run's draft.
@@ -110,6 +112,12 @@ export function ReviewView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordingId, scriptedId])
 
+  const [savedMatch, setSavedMatch] = useState<{
+    id: string
+    count: number
+    skillId: string
+  } | null>(null)
+
   const save = (publish: boolean): void => {
     if (!proposal || skillName.trim() === '') {
       setError('Give the skill a name first.')
@@ -119,6 +127,8 @@ export function ReviewView({
     setError(null)
     window.ghost.skills
       .saveDraft({
+        // Revising: append a new version to the same playbook, never a copy.
+        ...(updateSkillId ? { skillId: updateSkillId } : {}),
         name: skillName.trim(),
         recipe: proposal.recipe,
         recordingIds: recordingId ? [recordingId] : [],
@@ -134,12 +144,32 @@ export function ReviewView({
         if (!latest) throw new Error('The saved draft has no version to publish.')
         return window.ghost.skills
           .publish({ skillId: skill.id, version: latest.version })
-          .then(() => {
-            onNav({
-              view: 'runSetup',
-              skillId: skill.id,
-              demonstrated: demonstratedInputs(proposal.demonstrated)
-            })
+          .then(async () => {
+            // If open work already matches this approach, offer its review
+            // first; otherwise go straight to a first manual run. The lookup
+            // must never stall the save: give it a short budget.
+            const lookup = window.ghost.activity
+              .getFeed()
+              .then((feed) =>
+                [...feed.ready, ...feed.needsYou].find((o) => o.skillId === skill.id)
+              )
+              .catch(() => undefined)
+            const match = await Promise.race([
+              lookup,
+              new Promise<undefined>((resolve) => {
+                window.setTimeout(() => resolve(undefined), 10_000)
+              })
+            ])
+            if (match) {
+              setSavedMatch({ id: match.id, count: match.caseIds.length, skillId: skill.id })
+              setBusy(false)
+            } else {
+              onNav({
+                view: 'runSetup',
+                skillId: skill.id,
+                demonstrated: demonstratedInputs(proposal.demonstrated)
+              })
+            }
           })
       })
       .catch((err: unknown) => {
@@ -168,16 +198,46 @@ export function ReviewView({
             </div>
           </div>
         )}
-        {phase === 'ready' && proposal !== null && (
+        {savedMatch !== null && (
+          <div data-semid="review-saved-match">
+            <h2>Saved. This already matches open work.</h2>
+            <p className="muted">
+              {savedMatch.count} open request{savedMatch.count === 1 ? '' : 's'} match this
+              approach. Review them before anything runs.
+            </p>
+            <div className="teach-actions">
+              <Button
+                variant="primary"
+                data-semid="review-matching-requests"
+                onClick={() => onNav({ view: 'workItem', opportunityId: savedMatch.id })}
+              >
+                Review matching requests
+              </Button>
+              <Button
+                data-semid="review-run-once"
+                onClick={() =>
+                  onNav({
+                    view: 'runSetup',
+                    skillId: savedMatch.skillId,
+                    demonstrated: proposal ? demonstratedInputs(proposal.demonstrated) : undefined
+                  })
+                }
+              >
+                Run it once instead
+              </Button>
+            </div>
+          </div>
+        )}
+        {phase === 'ready' && proposal !== null && savedMatch === null && (
           <div>
             <p className="stage-steps" aria-label="Teaching progress">
-              <span>1 · Show Muse for SMB</span>
+              <span>1 · Show Muse</span>
               <span aria-hidden="true">→</span>
               <span className="stage-current">2 · Check my understanding</span>
               <span aria-hidden="true">→</span>
               <span>3 · Ready to use</span>
             </p>
-            <h2>Here is what Muse for SMB learned</h2>
+            <h2>Here is what Muse learned</h2>
             <ol className="steps-plain" data-testid="review-steps" data-semid="review-steps">
               {proposal.recipe.steps.map((step, index) => (
                 <li key={step.id}>
@@ -235,7 +295,7 @@ export function ReviewView({
                 disabled={busy}
                 onClick={() => save(true)}
               >
-                {busy ? 'Saving…' : 'Save and publish'}
+                {busy ? 'Saving…' : 'Save approach'}
               </Button>
               <button
                 type="button"

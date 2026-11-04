@@ -4,6 +4,7 @@ export const CHANNELS = {
   targetSetUrl: 'target:set-url',
   targetGetStatus: 'target:get-status',
   targetShow: 'target:show',
+  targetOpenCase: 'target:open-case',
   panelSetLayout: 'panel:set-layout',
   recorderGetState: 'recorder:get-state',
   recorderStart: 'recorder:start',

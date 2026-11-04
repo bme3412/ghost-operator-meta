@@ -117,6 +117,40 @@ describe('buildOpportunities', () => {
     expect(ready.find((o) => o.category === 'damaged')?.caseIds).toEqual(['T-203', 'T-205'])
   })
 
+  it('carries customer, summary, amount, rule, and proposed action per case', () => {
+    const events: StoredActivityEvent[] = [
+      {
+        ...opened(1, 'T-301', 'Board cracked in the mail'),
+        customer: 'Maya Chen',
+        amountCents: 12900
+      },
+      opened(2, 'T-302', 'Deck arrived torn')
+    ]
+    const coverage: SkillCoverage[] = [
+      {
+        skillId: 'after-hours',
+        skillName: 'Handle after-hours support tickets',
+        rulesByCategory: {
+          damaged: 'Damaged in shipping, reported within 7 days, means refund.'
+        },
+        actionsByCategory: { damaged: 'Refund' }
+      }
+    ]
+    const { ready } = buildOpportunities(events, coverage, [])
+    const damaged = ready.find((o) => o.category === 'damaged')
+    // The conditional rule survives verbatim; it is not collapsed to a
+    // bare "damage → refund" policy.
+    expect(damaged?.ruleText).toBe('Damaged in shipping, reported within 7 days, means refund.')
+    expect(damaged?.actionLabel).toBe('Refund')
+    expect(damaged?.cases).toEqual([
+      { id: 'T-301', customer: 'Maya Chen', summary: 'Board cracked in the mail', amountCents: 12900 },
+      { id: 'T-302', summary: 'Deck arrived torn' }
+    ])
+    // Unavailable details stay absent so the UI can say so honestly.
+    expect(damaged?.cases[1]?.customer).toBeUndefined()
+    expect(damaged?.cases[1]?.amountCents).toBeUndefined()
+  })
+
   it('suppresses a dismissed cluster until its membership changes', () => {
     const signature = 'damaged:T-203,T-205,T-208'
     const feedback = [{ signature, action: 'dismissed' as const, at: '2026-10-30T00:00:00.000Z' }]

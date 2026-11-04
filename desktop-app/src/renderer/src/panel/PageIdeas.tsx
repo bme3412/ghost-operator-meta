@@ -166,7 +166,7 @@ export function PageIdeas({
           ))}
         </ul>
       )}
-      {loading && result !== null && <p className="muted">Polishing with AI…</p>}
+      {loading && result !== null && <p className="muted">Looking for more ideas…</p>}
       {result?.warning && <p className="muted">{result.warning}</p>}
     </>
   )

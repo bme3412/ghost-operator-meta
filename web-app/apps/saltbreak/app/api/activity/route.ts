@@ -1,4 +1,4 @@
-import { listEvents, listTickets } from '@saltbreak/data';
+import { listEvents, listOrders, listTickets } from '@saltbreak/data';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,11 +11,13 @@ export const dynamic = 'force-dynamic';
 export function GET(request: Request): Response {
   const since = Number(new URL(request.url).searchParams.get('since') ?? 0) || 0;
   const tickets = new Map(listTickets().map((t) => [t.id, t]));
+  const orders = new Map(listOrders().map((o) => [o.number, o]));
   const events = listEvents(500)
     .filter((event) => event.id > since)
     .sort((a, b) => a.id - b.id)
     .map((event) => {
       const ticket = event.entity === 'ticket' ? tickets.get(event.entityId) : undefined;
+      const order = ticket?.orderNumber ? orders.get(ticket.orderNumber) : undefined;
       return ticket
         ? {
             ...event,
@@ -23,7 +25,9 @@ export function GET(request: Request): Response {
               subject: ticket.subject,
               body: ticket.body,
               status: ticket.status,
-              resolution: ticket.resolution ?? null
+              resolution: ticket.resolution ?? null,
+              customer: order?.customerName,
+              amountCents: order?.totalCents
             }
           }
         : event;

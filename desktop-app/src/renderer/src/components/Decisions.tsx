@@ -24,7 +24,7 @@ export function RulesCard({
         ))}
       </ul>
       <p className="muted">
-        Muse for SMB picks {options && options.length > 0 ? options.join(' or ') : 'a choice'} only when
+        Muse picks {options && options.length > 0 ? options.join(' or ') : 'a choice'} only when
         one of these clearly fits. Anything else comes back to you.
       </p>
     </div>

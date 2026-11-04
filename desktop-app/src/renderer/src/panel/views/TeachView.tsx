@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { PageIdea, PageIdeasResult, SkillSummary } from '../../../../shared/schemas'
 import { Button } from '../../components/Button'
 import { friendlyError } from '../../lib/errors'
+import { setPendingUpdateSkillId } from '../../lib/pendingUpdate'
 import { publishedSkillForStarter } from '../../lib/starters'
 import type { OnNav } from '../nav'
 import { PageIdeas } from '../PageIdeas'
@@ -9,11 +10,13 @@ import { PageIdeas } from '../PageIdeas'
 export function TeachView({
   onNav,
   initialGoal,
-  initialExample
+  initialExample,
+  updateSkillId
 }: {
   onNav: OnNav
   initialGoal: string
   initialExample: string
+  updateSkillId?: string
 }): React.JSX.Element {
   const [goal, setGoal] = useState(initialGoal)
   const [caseInput, setCaseInput] = useState(initialExample)
@@ -25,6 +28,12 @@ export function TeachView({
   const [topIdea, setTopIdea] = useState<PageIdea | null>(null)
   const [published, setPublished] = useState<SkillSummary[]>([])
   const goalRef = useRef<HTMLTextAreaElement>(null)
+
+  // Revising an existing playbook: remember its identity for the save step.
+  // No unmount cleanup — Teaching continues into Recording and Review.
+  useEffect(() => {
+    setPendingUpdateSkillId(updateSkillId ?? null)
+  }, [updateSkillId])
 
   useEffect(() => {
     window.ghost.target
@@ -118,14 +127,14 @@ export function TeachView({
           }}
         >
           <p className="stage-steps" aria-label="Teaching progress">
-            <span className="stage-current">1 · Show Muse for SMB</span>
+            <span className="stage-current">1 · Show Muse</span>
             <span aria-hidden="true">→</span>
             <span>2 · Check my understanding</span>
             <span aria-hidden="true">→</span>
             <span>3 · Ready to use</span>
           </p>
           <div className="teach-field">
-            <label htmlFor="teach-goal">What should Muse for SMB learn?</label>
+            <label htmlFor="teach-goal">What should Muse learn?</label>
             <textarea
               id="teach-goal"
               ref={goalRef}
@@ -157,7 +166,7 @@ export function TeachView({
               placeholder={casePlaceholder}
             />
             <p className="muted">
-              What you demonstrate on. Next time you run this, Muse for SMB asks for a different one.
+              What you demonstrate on. Next time you run this, Muse asks for a different one.
             </p>
           </div>
           {error !== null && (
@@ -166,7 +175,7 @@ export function TeachView({
             </p>
           )}
           <p className="muted">
-            You’ll do this once in the website. Muse for SMB records the clicks. You can add a note while
+            You’ll do this once in the website. Muse records the clicks. You can add a note while
             recording.
           </p>
           <div className="field">
@@ -179,7 +188,14 @@ export function TeachView({
             >
               {busy ? 'Starting…' : 'Start recording'}
             </Button>
-            <Button data-testid="teach-cancel" type="button" onClick={() => onNav({ view: 'home' })}>
+            <Button
+              data-testid="teach-cancel"
+              type="button"
+              onClick={() => {
+                setPendingUpdateSkillId(null)
+                onNav({ view: 'home' })
+              }}
+            >
               Cancel
             </Button>
           </div>

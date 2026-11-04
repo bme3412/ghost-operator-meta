@@ -165,6 +165,8 @@ export const BatchRecord = z.object({
   id: z.string().min(1),
   skillId: z.string().min(1),
   skillName: z.string(),
+  /** Playbook version every case in this batch ran, when known. */
+  skillVersion: z.number().int().positive().optional(),
   /** Run input each case id is bound to. */
   inputKey: z.string().min(1),
   /** Inputs shared by every case. */

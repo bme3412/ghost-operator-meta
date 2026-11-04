@@ -364,7 +364,7 @@ export async function getPageIdeas(
       page: head,
       ideas: heuristic,
       source: 'heuristic',
-      warning: 'MODEL_API_KEY is not set; showing heuristic ideas.'
+      warning: 'Showing ideas spotted on this page.'
     }
     cacheSet(input.url, result)
     return result
@@ -392,12 +392,12 @@ export async function getPageIdeas(
     const result: PageIdeasResult = { page: head, ideas, source: 'ai', warning: null }
     cacheSet(input.url, result)
     return result
-  } catch (error) {
+  } catch {
     return {
       page: head,
       ideas: heuristic,
       source: 'heuristic',
-      warning: `AI ideas failed (${(error as Error).message}); showing heuristic ideas.`
+      warning: 'Showing ideas spotted on this page.'
     }
   }
 }

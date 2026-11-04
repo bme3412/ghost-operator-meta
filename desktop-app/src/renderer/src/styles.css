@@ -1,5 +1,5 @@
 :root {
-  /* Muse for SMB (Saltbreak Surf Co.): warm white, dark ocean text, teal primary,
+  /* Muse (Saltbreak Surf Co.): warm white, dark ocean text, teal primary,
      amber only where the owner's judgment is needed. */
   --surface: #fffdf8;
   --surface-muted: #f7f3ea;
@@ -512,27 +512,45 @@ dd {
   top: 53px;
   z-index: 5;
   display: flex;
-  gap: 4px;
-  padding: 8px 16px;
+  gap: 18px;
+  padding: 8px 18px 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
 .panel-tab {
   font: inherit;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-muted);
   background: none;
   border: none;
-  border-radius: 999px;
-  padding: 6px 12px;
+  border-bottom: 2px solid transparent;
+  padding: 6px 2px 8px;
   cursor: pointer;
 }
 
 .panel-tab.selected {
-  color: var(--accent-contrast);
-  background: var(--accent);
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.view-head {
+  margin-bottom: 10px;
+}
+
+.view-title {
+  font-size: 17px;
+  margin: 6px 0 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .overflow-wrap {
@@ -572,6 +590,16 @@ dd {
 .briefing-head h1 {
   font-size: 19px;
   margin: 4px 0 2px;
+}
+
+.rule-chip {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--surface-muted);
+  border-radius: 999px;
+  padding: 4px 10px;
 }
 
 .feed-row-judgment {
